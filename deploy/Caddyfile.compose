@@ -1,0 +1,74 @@
+{
+	admin off
+}
+
+{$PUBLIC_HOST} {
+	route {
+		header {
+			-Server
+			-X-Powered-By
+			X-Content-Type-Options "nosniff"
+			X-Frame-Options "DENY"
+			Referrer-Policy "no-referrer"
+			Permissions-Policy "camera=(), microphone=(), geolocation=()"
+			Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		}
+
+		@foreign_origin {
+			header Origin *
+			not header Origin {$ALLOWED_ORIGIN}
+		}
+		respond @foreign_origin 403
+
+		@missing_app_origin {
+			path /api/* /media/*
+			not path /media/healthz
+			not header Origin {$ALLOWED_ORIGIN}
+		}
+		respond @missing_app_origin 403
+
+		@preflight {
+			method OPTIONS
+			header Origin {$ALLOWED_ORIGIN}
+		}
+		handle @preflight {
+			header {
+				Access-Control-Allow-Origin "{$ALLOWED_ORIGIN}"
+				Access-Control-Allow-Methods "GET, HEAD, POST, OPTIONS"
+				Access-Control-Allow-Headers "Authorization, Content-Type, Range, If-Range"
+				Access-Control-Max-Age "600"
+				Vary "Origin, Access-Control-Request-Method, Access-Control-Request-Headers"
+				Cache-Control "private, no-store"
+			}
+			respond "" 204
+		}
+
+		header {
+			Access-Control-Allow-Origin "{$ALLOWED_ORIGIN}"
+			Access-Control-Expose-Headers "Accept-Ranges, Content-Length, Content-Range, Content-Type"
+			Vary "Origin"
+		}
+
+		@control path /api/* /healthz
+		handle @control {
+			header Cache-Control "private, no-store"
+			reverse_proxy control:8080 {
+				header_down -Server
+				header_down -X-Powered-By
+			}
+		}
+
+		handle_path /media/* {
+			header Cache-Control "private, no-store"
+			reverse_proxy media:8080 {
+				flush_interval -1
+				header_down -Server
+				header_down -X-Powered-By
+			}
+		}
+
+		handle {
+			respond 404
+		}
+	}
+}

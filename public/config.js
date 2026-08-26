@@ -239,7 +239,6 @@ window.WT_CONFIG = {
     ownerSuffix: ' [HOST]',
     guestPermissions: 'Guest Permissions',
     allowGuestControl: 'Allow playback control',
-    allowGuestChat: 'Allow chat messages',
     retryPlayer: 'Retry',
     unmuteAndSync: 'Unmute & Sync',
 
@@ -274,6 +273,6 @@ window.WT_CONFIG = {
     toastFullscreenFailed: 'Could not enter fullscreen mode.',
     toastSendFailed: 'Could not send the message.',
     demoModeButton: 'Demo mode',
-    toastDemoMode: 'GitHub Pages demo mode: playback and chat stay in this browser tab.',
+    toastDemoMode: 'Local demo mode: playback and chat stay in this browser tab.',
   },
 };

@@ -122,16 +122,12 @@
                       <strong data-copy="emptyTitle">NO VIDEO LOADED</strong>
                       <span data-copy="emptyText">Paste a video URL below.</span>
                     </div>
-                    <div id="youtubeSurface" class="player-surface is-hidden">
-                      <div id="youtubePoster" class="youtube-poster is-hidden" aria-hidden="true">
-                        <img id="youtubePosterImage" alt="" referrerpolicy="no-referrer" />
-                        <span id="youtubePosterStatus" class="youtube-poster-status">PAUSED</span>
-                      </div>
-                      <div id="youtubeHost" class="youtube-host"></div>
+                    <div id="playerSurface" class="player-surface is-hidden">
+                      <div id="playerHost" class="media-host"></div>
                     </div>
-                    <div id="youtubeBadge" class="youtube-badge is-hidden">YouTube</div>
+                    <div id="mediaBadge" class="media-badge is-hidden">MEDIA</div>
                     <div id="playerErrorOverlay" class="player-message-overlay is-hidden" role="alert">
-                      <strong id="playerErrorMessage">The YouTube player timed out</strong>
+                      <strong id="playerErrorMessage">The media stream is unavailable</strong>
                       <button id="retryPlayerButton" type="button" data-copy="retryPlayer">Retry</button>
                     </div>
                     <div id="unmuteOverlay" class="player-message-overlay unmute-overlay is-hidden">
@@ -170,7 +166,6 @@
                 <fieldset id="roomPermissions" class="room-permissions" hidden>
                   <legend data-copy="guestPermissions">Guest Permissions</legend>
                   <label><input id="guestControlInput" type="checkbox" /> <span data-copy="allowGuestControl">Allow playback control</span></label>
-                  <label><input id="guestChatInput" type="checkbox" checked /> <span data-copy="allowGuestChat">Allow chat messages</span></label>
                 </fieldset>
               </section>
 

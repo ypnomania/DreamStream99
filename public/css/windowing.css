@@ -38,7 +38,7 @@ select {
 .login-box button,
 .now-watching,
 .room-line,
-.youtube-badge,
+.media-badge,
 .media-control,
 .time-label,
 .source-row,
@@ -136,10 +136,6 @@ body {
 .window-operation * {
   cursor: inherit;
 }
-.window-operation iframe {
-  pointer-events: none !important;
-}
-
 /* ---- resize hit areas: invisible but behave like a real desktop window ---- */
 .window-resize-handle {
   position: absolute;

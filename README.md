@@ -1,162 +1,174 @@
 # DreamStream 99
 
 [![Deploy GitHub Pages](https://github.com/ypnomania/DreamStream99/actions/workflows/pages.yml/badge.svg)](https://github.com/ypnomania/DreamStream99/actions/workflows/pages.yml)
+[![Media CI](https://github.com/ypnomania/DreamStream99/actions/workflows/media-ci.yml/badge.svg)](https://github.com/ypnomania/DreamStream99/actions/workflows/media-ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-A Windows 98-style YouTube watch-party desktop with a player, chat window, member list, and screenshot tool. The current public version runs as a fully client-side GitHub Pages demo with no persistent server.
+**Watch together, like it is 1999.** DreamStream 99 is a self-hosted YouTube watch party presented as a Windows 98 desktop. The static client runs on GitHub Pages; one VPS owns room synchronization and relays progressive MP4 byte ranges without exposing Google CDN URLs.
 
-[Live demo](https://ypnomania.github.io/DreamStream99/) · [Asset replacement guide](ASSET_GUIDE.md) · [Design and architecture notes](DESIGN_NOTES.md)
+一个真正可联机的复古观影房：GitHub Pages 承载纯静态前端，VPS 上的 Node.js、FastAPI 与 Caddy 负责房间同步、媒体解析和 Range 转发。
+
+[Open DreamStream 99](https://ypnomania.github.io/DreamStream99/) · [Deployment guide](docs/DEPLOYMENT.md) · [Operations guide](docs/OPERATIONS.md) · [Architecture notes](DESIGN_NOTES.md)
 
 ![DreamStream 99 main interface](docs/images/dreamstream-overview.png)
 
-## Current status
+## What works
 
-| Component | Status | Details |
-| --- | --- | --- |
-| GitHub Pages demo | Live | The UI, YouTube playback, screenshots, simulated members, and simulated chat all run in the browser |
-| `RoomClient` abstraction | Complete | The UI does not depend directly on a specific room transport |
-| Worker WebSocket client | Complete | `WebSocketRoomClient` defines requests, broadcasts, and reconnection behavior |
-| Cloudflare Worker | Planned | Will create rooms, validate tokens, and upgrade WebSocket connections |
-| Durable Object | Planned | One object per room will store playback, members, permissions, and chat state |
-| Node / Socket.IO prototype | Reference only | It is not deployed to GitHub Pages or connected to the current `RoomClient` |
+- Native HTML5 `<video>` playback; no YouTube IFrame API or embedded third-party player.
+- Host-created rooms, guest invite links, member presence, chat, and synchronized load/play/pause/seek/rate commands.
+- Stable `MediaRef` room state: `{ "provider": "youtube", "id": "…" }`. Expiring CDN URLs never enter the control protocol.
+- One owner permission: `guestPlaybackControl`. Chat remains available to every joined member.
+- Short-lived HMAC media grants, opaque relay capabilities, exact-origin checks, bounded stores, and control-plane rate limits.
+- yt-dlp metadata resolution, progressive MP4 selection, HTTP `HEAD`/single-range relay, and one bounded automatic re-resolve after an upstream 403.
+- Docker Compose deployment with non-root, read-only control and media containers; Caddy terminates TLS and exposes only the public gateway.
+- Optional YouTube cookies/proxy plus a pinned, internal-only PO-token provider and Node 22 EJS runtime for current YouTube challenges.
 
-## Features
+Production was verified through the public hostname with two WebSocket peers, permission and chat broadcasts, a real YouTube resolve, `HEAD`, and a `bytes=0-1023` request returning `206 Partial Content`.
 
-- Windows 98 desktop, taskbar, and Internet Explorer-style windows
-- Window dragging, eight-direction resizing, minimize, maximize, close, and saved layouts
-- YouTube URL parsing, play, pause, seek, playback speed, and a custom paused view
-- Player and chat screenshot tool
-- Simulated members, chat, and playback state available directly on GitHub Pages
-- Replaceable logos, backgrounds, icons, colors, and copy
-- Local Pixelated MS Sans Serif bitmap font and integer HiDPI scaling
+## Architecture
 
-> Demo playback, members, and chat exist only in the current page. They do not synchronize across browsers or devices.
-
-## Serverless architecture
-
-```text
-GitHub Pages
-└── Win98 UI / YouTube / Screenshot
-    ├── DemoRoomClient                 Current live demo
-    └── WebSocketRoomClient
-        └── Cloudflare Worker          Planned
-            └── Durable Object         One object per room
+```mermaid
+flowchart LR
+    B[Browser] -->|static assets| P[GitHub Pages]
+    B -->|HTTPS + WSS| G[Caddy on VPS]
+    G -->|/api + /healthz| C[Node control]
+    G -->|/media| M[FastAPI media]
+    M -->|internal HTTP| T[PO-token provider]
+    M -->|yt-dlp metadata + Range| Y[YouTube / Google video CDN]
 ```
 
-The production architecture does not require a persistent Node server, Redis, a traditional database, or a managed VPS. A Durable Object will provide strongly consistent room state and WebSocket broadcasts, while WebSocket Hibernation can reduce resource use for idle rooms.
+| Plane | Deployment | Responsibility |
+| --- | --- | --- |
+| Frontend | GitHub Pages | Static Win98 UI, `WebSocketRoomClient`, `NativeMediaAdapter`, clock-offset and playback-anchor logic |
+| Gateway | VPS Caddy | TLS, strict CORS, security headers, `/api`/`/media` routing, streaming flush |
+| Control | VPS Node.js 22 | In-memory rooms, credentials, WebSocket v1 protocol, state broadcasts, 24-hour empty-room cleanup |
+| Media | VPS Python 3.13 | Media-grant validation, yt-dlp resolution, opaque relay sessions, Range forwarding, 403 refresh |
 
-## Run locally
+The default production endpoints are:
 
-Node.js 20 or newer is required.
+```text
+Frontend:  https://ypnomania.github.io/DreamStream99/
+Control:   https://dreamstream.lucius7.dev/api/rooms
+WebSocket: wss://dreamstream.lucius7.dev/api/rooms/{roomId}/ws
+Media:     https://dreamstream.lucius7.dev/media
+```
+
+## Request flow
+
+1. The host creates a room with `POST /api/rooms`; its owner token stays in the URL fragment, which is not sent in HTTP requests.
+2. A copied invite omits that fragment. A guest exchanges a nickname at `POST /api/rooms/{roomId}/join` for a 12-hour room credential.
+3. Both peers open the room WebSocket with subprotocols `dreamstream-v1` and `token.<credential>`. Every JSON frame carries `version: 1`.
+4. Room state broadcasts only a `MediaRef`. A joined peer requests a 120-second `mg1` media grant, then posts that grant and the same `MediaRef` to `/media/resolve`.
+5. FastAPI returns metadata and an opaque `/relay/{capability}` URL. The browser mounts it on the native player with `crossOrigin` set before `src`.
+6. If a relay origin expires with 403, concurrent requests share one refresh, the exact format is reselected, and the original Range is retried once. The browser can also obtain a new grant and capability after an expired or restarted session.
+
+## Deploy on a VPS
+
+Prerequisites: a Linux VPS, Docker Engine with Compose v2, a DNS record pointing a hostname at the VPS, and inbound TCP 80/443. Node and Python do not need to be installed on the host.
+
+```bash
+git clone https://github.com/ypnomania/DreamStream99.git
+cd DreamStream99
+cp deploy/.env.example .env
+openssl rand -base64 48
+```
+
+Put the generated value in `.env` as `MEDIA_GRANT_SECRET`. Never commit or print that file. For a fresh VPS where Compose should own Caddy:
+
+```bash
+docker compose --profile bundled-gateway up -d --build
+docker compose ps
+```
+
+If the host already runs Caddy, start only the application containers and import [`deploy/Caddyfile.site`](deploy/Caddyfile.site) from the host Caddyfile:
+
+```bash
+docker compose up -d --build control media pot-provider
+```
+
+The application ports bind to `127.0.0.1:8787` and `127.0.0.1:8788` by default. The PO-token sidecar has no host port. Follow the [deployment guide](docs/DEPLOYMENT.md) for DNS, Caddy validation, GitHub Pages settings, cookie fallback, upgrades, and rollback.
+
+## Local development and tests
+
+Node.js 22 or newer and Python 3.13 are the supported development versions.
 
 ```bash
 npm ci
-npm start
-```
-
-Open <http://localhost:3000>. The local page still uses `demo` mode by default. The Express / Socket.IO code in this repository is an earlier synchronization prototype, not the production Serverless backend.
-
-Restart the server automatically during development:
-
-```bash
-npm run dev
-```
-
-Generate the same static output deployed to GitHub Pages:
-
-```bash
+npm run verify
 npm run build
 ```
 
-The build is written to `dist/`. The build script rewrites root-relative asset paths for the repository subpath and forces the output to use `demo` mode.
+The static build is written to `dist/`. With no endpoint variables it uses the local demo transport; the Pages workflow injects production WebSocket, API, and media URLs at build time. No server secret is written into the static artifact.
 
-## Runtime modes
+Run the media tests:
 
-Runtime configuration lives in [`public/runtime-config.js`](public/runtime-config.js).
-
-```js
-window.WT_RUNTIME = {
-  mode: 'demo',
-  websocketUrl: null,
-  apiUrl: null,
-};
+```bash
+python3.13 -m venv media/.venv
+media/.venv/bin/pip install --editable 'media[test]'
+media/.venv/bin/pytest media
 ```
 
-| `mode` | Client | Purpose |
+Run the public protocol and Range smoke check after deployment:
+
+```bash
+DREAMSTREAM_BASE_URL=https://dreamstream.lucius7.dev npm run smoke:e2e
+```
+
+The smoke script creates a disposable room and never prints room credentials or media grants.
+
+## Configuration
+
+| Setting | Default | Purpose |
 | --- | --- | --- |
-| `demo` | `DemoRoomClient` | GitHub Pages presentation and local UI development |
-| `websocket` | `WebSocketRoomClient` | Connection to the future Cloudflare Worker |
+| `MEDIA_GRANT_SECRET` | required | Exact shared HMAC secret for Node grant signing and Python verification |
+| `ALLOWED_ORIGIN` | `https://ypnomania.github.io` | One exact browser origin; an Origin never includes the repository path |
+| `PUBLIC_HOST` | `dreamstream.lucius7.dev` | TLS hostname used by the bundled Caddy profile |
+| `MAX_ROOMS` | `10000` | Bound on process-local control rooms |
+| `YTDLP_COOKIEFILE` | empty | Optional Netscape cookie file mounted from `deploy/secrets/` |
+| `YTDLP_PO_TOKEN_PROVIDER` | internal bgutil endpoint | yt-dlp PO-token plugin extractor argument |
+| `YTDLP_PROXY` | empty | Optional proxy shared by resolution and relay requests |
+| `RELAY_REFRESH_*` | see `.env.example` | Refresh deadline, failure cooldown, and global concurrency bound |
 
-After the Worker backend is complete, configure it as follows:
+For a fork, change `ALLOWED_ORIGIN`, `PUBLIC_HOST`, and the three public endpoint variables in [`.github/workflows/pages.yml`](.github/workflows/pages.yml) together.
 
-```js
-window.WT_RUNTIME = {
-  mode: 'websocket',
-  websocketUrl: 'wss://example.workers.dev/ws',
-  apiUrl: 'https://example.workers.dev/api/rooms',
-};
-```
+## Security and operational boundaries
 
-The main `RoomClient` methods are `join()`, `sendPlayback()`, `sendChat()`, `updatePermissions()`, and `ping()`. Subscribe to state with `onSnapshot()`, `onPresence()`, `onPlayback()`, `onChat()`, `onPermissions()`, and `onConnection()`.
+- CORS rejects missing, duplicate, and foreign browser origins, but CORS is not authentication and does not stop non-browser traffic. Room credentials, short-lived media grants, opaque relay capabilities, firewall rules, and bandwidth monitoring remain necessary.
+- Upstream URLs, yt-dlp raw output, cookies, request headers, and format IDs are never returned to the browser. Relay targets must be credential-free HTTPS `googlevideo.com` URLs and redirects are not followed.
+- Rooms, guest credentials, messages, and relay capabilities are intentionally process-local. Restarting a container loses that service's volatile state; deploy one control replica and one Uvicorn worker.
+- A relay capability has a 15-minute sliding idle lifetime. It authorizes byte access during that window, so do not log or share relay URLs.
+- This architecture has no managed database, queue, transcoder, or control-plane subscription. The VPS, storage, DNS, and especially outbound media bandwidth can still cost money.
+- A directly addressed VPS is discoverable and is not a DDoS shield. This project provides application authorization and strict exposure, not volumetric attack protection.
+- YouTube behavior changes and some videos may require cookies, PO tokens, a supported JavaScript runtime, or different egress. Self-hosters are responsible for content rights and applicable platform terms.
 
-## Configuration and assets
+See [operations](docs/OPERATIONS.md) for secret rotation, log hygiene, state-loss expectations, 403 diagnosis, and incident checks.
 
-| File | Purpose |
-| --- | --- |
-| [`public/config.js`](public/config.js) | Copy, theme, windows, desktop icons, and default assets |
-| [`public/assets-config.js`](public/assets-config.js) | Logo, background, and icon overrides without editing the main configuration |
-| [`public/runtime-config.js`](public/runtime-config.js) | Demo or WebSocket runtime selection |
-| [`ASSET_GUIDE.md`](ASSET_GUIDE.md) | Custom images, scaling, and layout reset instructions |
-| [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) | Sources and licenses for fonts, icons, and reference artwork |
-
-Place custom images in `public/assets/custom/`. To reset saved window and desktop icon positions, visit:
+## Repository map
 
 ```text
-http://localhost:3000/?resetLayout=1
+public/                  GitHub Pages UI and browser adapters
+server/                  Node control service and media-grant signer
+media/                   FastAPI resolver and streaming relay
+deploy/                  Caddy configs, env template, secret mount
+scripts/build-pages.js   Static Pages build with public runtime injection
+scripts/smoke-e2e.mjs    Public control + media smoke test
+tests/                   Node, frontend, and cross-language grant tests
+docker-compose.yml       VPS application stack
 ```
 
-All interface and body text uses the locally hosted Pixelated MS Sans Serif bitmap font. See the bundled license and third-party notices for attribution.
+## Protocol summary
 
-## Project structure
-
-```text
-public/                 Static UI and browser-side logic
-  js/room-client.js     Demo and WebSocket room clients
-server/                 Earlier Node / Socket.IO synchronization prototype
-scripts/build-pages.js  GitHub Pages static build script
-tests/                  Node.js tests
-.github/workflows/      Automated verification and Pages deployment
-```
-
-## Commands
-
-| Command | Description |
+| Endpoint / channel | Contract |
 | --- | --- |
-| `npm start` | Start the local Express static server and prototype API |
-| `npm run dev` | Restart automatically when server files change |
-| `npm run build` | Generate the `dist/` GitHub Pages site |
-| `npm test` | Run all tests |
-| `npm run check` | Check JavaScript syntax |
-| `npm run verify` | Run syntax checks and tests |
+| `POST /api/rooms` | Create room → `{ roomId, hostToken }` |
+| `POST /api/rooms/{id}/join` | Exchange nickname → `{ roomToken, clientId, expiresAt }` |
+| `WS /api/rooms/{id}/ws` | v1 join, snapshot, playback, presence, permission, chat, ping |
+| `POST /api/rooms/{id}/media-grants` | Joined credential → media-bound `mg1` grant |
+| `POST /media/resolve` | Exact grant + `MediaRef` → metadata and opaque progressive relay URLs |
+| `GET/HEAD /media/relay/{capability}` | Strict single-byte-range streaming; no transcoding |
 
-## Automatic deployment
+The detailed state and recovery invariants live in [DESIGN_NOTES.md](DESIGN_NOTES.md).
 
-After a push to `main`, [`pages.yml`](.github/workflows/pages.yml) performs these steps:
+## Credits and license
 
-1. Install locked dependencies.
-2. Run `npm run verify`.
-3. Run `npm run build`.
-4. Upload `dist/` and deploy it to GitHub Pages.
-
-The workflow can also be started manually with `workflow_dispatch` from GitHub Actions.
-
-## Documentation
-
-- [Design and architecture notes](DESIGN_NOTES.md)
-- [Asset replacement guide](ASSET_GUIDE.md)
-- [Third-party notices](THIRD_PARTY_NOTICES.md)
-- [Font notes](public/assets/fonts/README.md)
-
-## License
-
-Project code is available under the [MIT License](LICENSE). Third-party fonts, icons, and image assets may use different terms; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Project code is available under the [MIT License](LICENSE). Fonts, historical artwork, container images, and runtime dependencies may use different terms; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

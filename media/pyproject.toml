@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dreamstream-media-poc"
+version = "0.2.0"
+description = "Strict YouTube resolver contract and progressive MP4 byte-relay PoC"
+requires-python = ">=3.13"
+dependencies = [
+    "anyio>=4.8",
+    "fastapi>=0.115",
+    "httpx>=0.28",
+    "uvicorn[standard]>=0.34",
+    "yt-dlp[default]==2026.8.19",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.3",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["tests"]
+markers = [
+    "integration: reaches YouTube over the network and may require cookies",
+]

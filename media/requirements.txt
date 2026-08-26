@@ -1,0 +1,7 @@
+# Runtime dependencies. Keep this file aligned with pyproject.toml for
+# deployments that install from requirements.txt instead of the package.
+anyio>=4.8
+fastapi>=0.115
+httpx>=0.28
+uvicorn[standard]>=0.34
+yt-dlp[default]==2026.8.19

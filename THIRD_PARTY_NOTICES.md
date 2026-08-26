@@ -29,7 +29,48 @@ These images are not redesigned modern icons and are not claimed to have an open
 
 This project does not copy its window manager code directly. It serves as a behavioral reference for Win9x-style web window interactions such as dragging, resizing, minimizing, maximizing, and closing.
 
+## Media service runtime
+
+The VPS media image includes Python/FastAPI/HTTPX/Uvicorn, Node.js 22,
+yt-dlp, yt-dlp-ejs, and their runtime dependencies. The default deployment also
+uses the GPL-3.0-licensed `bgutil-ytdlp-pot-provider` plugin and separate provider
+image. The yt-dlp default dependency group includes software under additional
+terms, notably GPL-2.0-or-later Mutagen; yt-dlp-ejs bundles MIT `astring` and ISC
+`meriyah` code.
+
+The complete media-specific summary and the paths of license texts retained in
+the container are documented in [`media/THIRD_PARTY_NOTICES.md`](media/THIRD_PARTY_NOTICES.md).
+
 ## 1990s web references
 
 - `oldweb-today/oldweb-today`: <https://github.com/oldweb-today/oldweb-today>
 - 88×31 and GeoCities archives were used only as visual research. Their sources and copyright terms vary, so historical webpage images are not bundled in bulk.
+
+## Runtime software
+
+The production containers install or run the following principal open-source
+dependencies. Their upstream license texts and transitive notices remain
+authoritative.
+
+| Project | Use | License |
+| --- | --- | --- |
+| [Node.js](https://github.com/nodejs/node) | Control runtime and media JavaScript challenge runtime | MIT and bundled third-party licenses |
+| [Express](https://github.com/expressjs/express) | Control HTTP routing | MIT |
+| [ws](https://github.com/websockets/ws) | Control WebSocket server/client tests | MIT |
+| [Python](https://www.python.org/) | Media runtime | PSF License |
+| [FastAPI](https://github.com/fastapi/fastapi) | Media HTTP application | MIT |
+| [Uvicorn](https://github.com/encode/uvicorn) | Media ASGI server | BSD-3-Clause |
+| [HTTPX](https://github.com/encode/httpx) | Streaming upstream client | BSD-3-Clause |
+| [AnyIO](https://github.com/agronholm/anyio) | Async cancellation and concurrency | MIT |
+| [yt-dlp](https://github.com/yt-dlp/yt-dlp) | YouTube metadata and progressive format resolution | Unlicense |
+| [yt-dlp EJS](https://github.com/yt-dlp/ejs) | External JavaScript challenge components | Unlicense, MIT, and ISC components |
+| [bgutil-ytdlp-pot-provider](https://github.com/Brainicism/bgutil-ytdlp-pot-provider) | PO-token plugin and internal HTTP sidecar | GPL-3.0 |
+| [Caddy](https://github.com/caddyserver/caddy) | TLS and reverse-proxy gateway | Apache-2.0 |
+
+DreamStream 99 does not vendor these runtime projects into its MIT-licensed
+source tree. They are installed from package indexes or referenced as container
+images during a deployment. Distributors of combined images should retain all
+licenses and notices supplied by those images and packages.
+
+The media image's exact package versions, license expressions, and retained
+license-file paths are recorded in [media/THIRD_PARTY_NOTICES.md](media/THIRD_PARTY_NOTICES.md).

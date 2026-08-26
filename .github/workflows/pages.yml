@@ -23,7 +23,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - name: Install dependencies
         run: npm ci
@@ -35,6 +35,11 @@ jobs:
           enablement: true
       - name: Build static site
         run: npm run build
+        env:
+          WT_RUNTIME_MODE: websocket
+          WT_API_URL: https://dreamstream.lucius7.dev/api/rooms
+          WT_WEBSOCKET_URL: wss://dreamstream.lucius7.dev/api/rooms
+          WT_MEDIA_URL: https://dreamstream.lucius7.dev/media
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
         with:

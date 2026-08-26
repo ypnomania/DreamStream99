@@ -1,0 +1,51 @@
+name: Media CI
+
+on:
+  push:
+    paths:
+      - 'media/**'
+      - 'tests/fixtures/media-grant-v1.json'
+      - '.github/workflows/media-ci.yml'
+  pull_request:
+    paths:
+      - 'media/**'
+      - 'tests/fixtures/media-grant-v1.json'
+      - '.github/workflows/media-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install and test
+        env:
+          MEDIA_GRANT_SECRET: ci-media-grant-secret-at-least-32-bytes
+        run: |
+          python -m pip install --editable 'media[test]'
+          python -m pytest media
+
+      - name: Build Python 3.13 image
+        run: docker build --tag dreamstream-media:test media
+
+      - name: Smoke-test image health
+        run: |
+          docker run --detach --name dreamstream-media-smoke \
+            --env MEDIA_GRANT_SECRET=ci-media-grant-secret-at-least-32-bytes \
+            --publish 127.0.0.1:18080:8080 dreamstream-media:test
+          trap 'docker rm --force dreamstream-media-smoke' EXIT
+          for attempt in {1..20}; do
+            curl --fail --silent http://127.0.0.1:18080/healthz >/dev/null && exit 0
+            sleep 1
+          done
+          docker logs dreamstream-media-smoke
+          exit 1

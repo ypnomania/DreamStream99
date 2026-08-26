@@ -1,0 +1,38 @@
+{
+  "description": "DreamStream99 media grant v1 HMAC-SHA256 interoperability vector",
+  "secretUtf8": "dreamstream99-media-grant-test-secret-v1",
+  "signingDomainUtf8": "DreamStream99.MediaGrant.HMAC-SHA256.v1\u0000",
+  "input": {
+    "roomId": "ABCD2345",
+    "subject": "11111111-1111-4111-8111-111111111111",
+    "role": "guest",
+    "media": {
+      "provider": "youtube",
+      "id": "dQw4w9WgXcQ"
+    },
+    "jti": "22222222-2222-4222-8222-222222222222",
+    "nowMs": 1800000000000,
+    "ttlSeconds": 120
+  },
+  "claims": {
+    "v": 1,
+    "type": "media-grant",
+    "iss": "dreamstream99-control",
+    "aud": "dreamstream99-media",
+    "roomId": "ABCD2345",
+    "subject": "11111111-1111-4111-8111-111111111111",
+    "role": "guest",
+    "media": {
+      "provider": "youtube",
+      "id": "dQw4w9WgXcQ"
+    },
+    "jti": "22222222-2222-4222-8222-222222222222",
+    "iat": 1800000000,
+    "exp": 1800000120
+  },
+  "canonicalPayloadJson": "{\"v\":1,\"type\":\"media-grant\",\"iss\":\"dreamstream99-control\",\"aud\":\"dreamstream99-media\",\"roomId\":\"ABCD2345\",\"subject\":\"11111111-1111-4111-8111-111111111111\",\"role\":\"guest\",\"media\":{\"provider\":\"youtube\",\"id\":\"dQw4w9WgXcQ\"},\"jti\":\"22222222-2222-4222-8222-222222222222\",\"iat\":1800000000,\"exp\":1800000120}",
+  "payloadBase64url": "eyJ2IjoxLCJ0eXBlIjoibWVkaWEtZ3JhbnQiLCJpc3MiOiJkcmVhbXN0cmVhbTk5LWNvbnRyb2wiLCJhdWQiOiJkcmVhbXN0cmVhbTk5LW1lZGlhIiwicm9vbUlkIjoiQUJDRDIzNDUiLCJzdWJqZWN0IjoiMTExMTExMTEtMTExMS00MTExLTgxMTEtMTExMTExMTExMTExIiwicm9sZSI6Imd1ZXN0IiwibWVkaWEiOnsicHJvdmlkZXIiOiJ5b3V0dWJlIiwiaWQiOiJkUXc0dzlXZ1hjUSJ9LCJqdGkiOiIyMjIyMjIyMi0yMjIyLTQyMjItODIyMi0yMjIyMjIyMjIyMjIiLCJpYXQiOjE4MDAwMDAwMDAsImV4cCI6MTgwMDAwMDEyMH0",
+  "compactSigningInput": "mg1.eyJ2IjoxLCJ0eXBlIjoibWVkaWEtZ3JhbnQiLCJpc3MiOiJkcmVhbXN0cmVhbTk5LWNvbnRyb2wiLCJhdWQiOiJkcmVhbXN0cmVhbTk5LW1lZGlhIiwicm9vbUlkIjoiQUJDRDIzNDUiLCJzdWJqZWN0IjoiMTExMTExMTEtMTExMS00MTExLTgxMTEtMTExMTExMTExMTExIiwicm9sZSI6Imd1ZXN0IiwibWVkaWEiOnsicHJvdmlkZXIiOiJ5b3V0dWJlIiwiaWQiOiJkUXc0dzlXZ1hjUSJ9LCJqdGkiOiIyMjIyMjIyMi0yMjIyLTQyMjItODIyMi0yMjIyMjIyMjIyMjIiLCJpYXQiOjE4MDAwMDAwMDAsImV4cCI6MTgwMDAwMDEyMH0",
+  "signatureBase64url": "5RskC7ZatBeF1EeqBhhgfIjnlhDutwfa--97LIWr1bM",
+  "token": "mg1.eyJ2IjoxLCJ0eXBlIjoibWVkaWEtZ3JhbnQiLCJpc3MiOiJkcmVhbXN0cmVhbTk5LWNvbnRyb2wiLCJhdWQiOiJkcmVhbXN0cmVhbTk5LW1lZGlhIiwicm9vbUlkIjoiQUJDRDIzNDUiLCJzdWJqZWN0IjoiMTExMTExMTEtMTExMS00MTExLTgxMTEtMTExMTExMTExMTExIiwicm9sZSI6Imd1ZXN0IiwibWVkaWEiOnsicHJvdmlkZXIiOiJ5b3V0dWJlIiwiaWQiOiJkUXc0dzlXZ1hjUSJ9LCJqdGkiOiIyMjIyMjIyMi0yMjIyLTQyMjItODIyMi0yMjIyMjIyMjIyMjIiLCJpYXQiOjE4MDAwMDAwMDAsImV4cCI6MTgwMDAwMDEyMH0.5RskC7ZatBeF1EeqBhhgfIjnlhDutwfa--97LIWr1bM"
+}

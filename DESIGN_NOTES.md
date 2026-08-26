@@ -1,115 +1,178 @@
 # Design and architecture notes
 
-This document records DreamStream 99's visual boundaries, browser architecture, and Serverless direction. The current deployable version is a fully client-side GitHub Pages demo; the Cloudflare Worker and Durable Object are not yet included in this repository.
+DreamStream 99 deliberately separates a static browser application from two volatile VPS services. The room protocol remains stable even when YouTube playback URLs expire, and the browser never receives an upstream Google CDN URL.
 
-## Visual layers
+## Physical topology
 
-The interface is deliberately divided into three layers so it feels like more than a modern website wearing a Win98 skin:
-
-1. **Windows 98 desktop and IE shell:** title bars, taskbar, menus, address bars, toolbars, desktop icons, and window controls.
-2. **1998–2000 web content:** a three-column portal, blue underlined links, 88×31 badges, a visitor counter, small footer text, and a separate chat site.
-3. **Real browser features:** YouTube playback, screenshots, and `RoomClient`-driven room state and chat UI.
-
-The overall layout and DreamStream 99 brand are original. References were used only to study period details, proportions, information density, and interaction patterns.
-
-## Serverless boundary
-
-### Current delivery
-
-- GitHub Pages hosts the entire static UI.
-- `DemoRoomClient` simulates members, chat, permissions, and playback state in the browser.
-- The static build forces `WT_RUNTIME.mode = 'demo'` so Pages never depends accidentally on a backend.
-- `WebSocketRoomClient` implements native WebSocket requests, broadcast dispatch, timeouts, and automatic reconnection.
-
-### Planned stage
-
-- A Cloudflare Worker will provide `POST /api/rooms`, token validation, and WebSocket upgrades.
-- A Durable Object per room will store playback state, members, permissions, and recent chat, then handle broadcasts.
-- WebSocket Hibernation will allow idle rooms to sleep while retaining client connections.
-- The production deployment will not require Node, Socket.IO, Redis, or a traditional database.
-
-The `server/` directory contains an earlier Express / Socket.IO synchronization prototype. It preserves the state model and provides test references, but it is not connected to the current `RoomClient` or deployed to Pages.
-
-## RoomClient contract
-
-The UI depends only on the shared interface exposed by [`public/js/room-client.js`](public/js/room-client.js).
-
-| Type | Method / event | Purpose |
-| --- | --- | --- |
-| Command | `join()` | Join a room and receive its initial snapshot |
-| Command | `sendPlayback()` | Load, play, pause, seek, or change playback speed |
-| Command | `sendChat()` | Send a chat message |
-| Command | `updatePermissions()` | Update guest playback and chat permissions |
-| Command | `ping()` | Estimate the offset between client and server clocks |
-| Event | `onSnapshot()` | Receive a complete room snapshot |
-| Event | `onPresence()` | Receive the member list |
-| Event | `onPlayback()` | Receive playback state |
-| Event | `onChat()` | Receive one chat message |
-| Event | `onPermissions()` | Receive permission changes |
-| Event | `onConnection()` | Receive connection state |
-
-WebSocket frames use this basic format:
-
-```js
-// Request
-{ type, requestId, payload }
-
-// Response
-{ type: 'response', requestId, ok, payload }
-
-// Broadcast example
-{ type: 'playback:state', payload }
+```text
+GitHub Pages
+└── HTML / CSS / browser JavaScript
+    └── HTTPS + WebSocket requests
+        └── Caddy on one Linux VPS
+            ├── /api/*, /healthz  → Node control :8080
+            └── /media/*          → FastAPI media :8080
+                                      ├── internal PO-token provider :4416
+                                      └── YouTube metadata / Google CDN Range
 ```
 
-## Playback state model
+Caddy is the only public application listener. With the default Compose mapping, Node and FastAPI bind only to host loopback and the PO-token provider is reachable only on the Compose network.
 
-Shared playback uses a server anchor instead of broadcasting the player's current time continuously:
+## Trust boundaries
 
-- `revision`: monotonically increasing state version;
-- `videoId`: YouTube video ID;
-- `paused`: paused state;
-- `anchorSeconds`: playback position at the anchor;
-- `anchorServerMs`: server time corresponding to the anchor;
-- `playbackRate`: playback speed;
-- `actionId`: idempotency identifier for a command.
+The browser is untrusted. An Origin header is useful as a browser boundary but is not treated as proof of identity.
 
-The playing position can be derived as `anchorSeconds + elapsed × playbackRate`. Clients calibrate their clocks with `ping()` and ignore stale state using `revision`.
+- Caddy, Node, and FastAPI each enforce the one configured GitHub Pages origin.
+- The owner token and guest room token authenticate control-plane membership.
+- Node signs a media-bound, 120-second `mg1` capability only for a currently joined member.
+- FastAPI verifies the grant's canonical bytes, HMAC, issuer, audience, lifetime, room/member fields, and exact `MediaRef`.
+- FastAPI returns a random relay capability, not the upstream URL or extractor data.
+- Relay targets are restricted to credential-free HTTPS hosts at `googlevideo.com`; redirects and caller-supplied target URLs are rejected.
 
-## Window manager
+The shared HMAC secret exists only in Node and FastAPI process environments. It is never present in Pages, Caddy, a room snapshot, or a relay response.
 
-Both main browser windows are real DOM elements controlled by the same lightweight window manager rather than Canvas screenshots:
+## Control protocol
 
-- title bar dragging;
-- eight-direction resizing;
-- focus and `z-index`;
-- minimize, maximize, and restore;
-- close, reopen from a desktop icon, and taskbar switching;
-- layout persistence in `localStorage`.
+### Credentials
 
-Window behavior draws on Win9x web GUI references, while the implementation is original to this project.
+- Room IDs are eight characters from an ambiguity-free uppercase alphabet.
+- Creating a room returns an owner token. The browser stores it in the URL fragment.
+- Copying an invite removes the fragment. A guest receives a separate 12-hour credential from the join endpoint.
+- HTTP credentials use `Authorization: Bearer …`.
+- WebSocket credentials use a second subprotocol, `token.<credential>`, alongside `dreamstream-v1`; credentials are not accepted in the query string.
 
-## Font and HiDPI strategy
+### Frames
 
-- UI, body, and heading text use the bundled Pixelated MS Sans Serif regular and bold fonts.
-- The base size is 12px, with no Canvas pre-rasterization.
-- HiDPI mode scales the entire logical desktop instead of enlarging text alone.
-- Automatic scaling considers the CSS viewport, `devicePixelRatio`, and estimated physical pixels.
-- Integer scales of `1`, `2`, or `3` are recommended to preserve the proportions of controls, icons, and bitmap text.
+Every WebSocket frame has `version: 1`. Requests also include a bounded `requestId` and receive one correlated `response`.
 
-## Image asset strategy
+```js
+// Client request
+{ version: 1, type, requestId, payload }
 
-- IE toolbar artwork keeps the small native scale of the historical interface.
-- Win98 system icons prefer archive references, with local fallbacks in critical locations.
-- GeoCities and historical 88×31 assets with unclear rights are not bundled in bulk.
-- Custom logos, GIFs, and backgrounds belong in `public/assets/custom/` and are configured through `public/assets-config.js`.
-- Sources and licenses are recorded in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+// Server response
+{ version: 1, type: 'response', requestId, ok, payload }
 
-## Main references
+// Broadcast
+{ version: 1, type: 'playback:state', payload }
+```
 
-- [98.css](https://github.com/jdan/98.css)
-- [1j01/os-gui](https://github.com/1j01/os-gui)
-- [Windows Icon Archive](https://github.com/limehawk/windows-icon-archive)
-- [Windows 98 Module 2 — The Internet](https://www.tech2u.com.au/training/tech2u/win98_2/internet.html)
-- [oldweb.today](https://github.com/oldweb-today/oldweb-today)
-- [Windows 98 Web Edition](https://github.com/azayrahmad/win98-web)
-- [Web Design Museum — 1999 gallery](https://www.webdesignmuseum.org/gallery/year-1999)
+The principal commands are `room:join`, `playback:command`, `room:permissions:update`, `chat:send`, and `ping`. Server broadcasts include snapshots, playback, members, permissions, and chat.
+
+### Permission model
+
+Chat is part of basic room membership. There is no `guestChat` feature flag. The only delegated permission is:
+
+```json
+{ "guestPlaybackControl": false }
+```
+
+The owner can always control playback and update this permission. A guest can load, play, pause, seek, end, or change rate only when it is enabled.
+
+## Playback state
+
+Room state holds a stable media identity rather than a URL:
+
+```json
+{
+  "revision": 7,
+  "media": { "provider": "youtube", "id": "dQw4w9WgXcQ" },
+  "paused": false,
+  "anchorSeconds": 42.5,
+  "anchorServerMs": 1787731200000,
+  "playbackRate": 1,
+  "actionId": "a UUID",
+  "changedBy": "Host"
+}
+```
+
+The expected position at server time `t` is:
+
+```text
+paused:  anchorSeconds
+playing: anchorSeconds + max(0, t - anchorServerMs) / 1000 × playbackRate
+```
+
+Clients estimate their server-clock offset with ping round trips, ignore stale revisions, and correct only meaningful drift. An `actionId` makes retried playback commands idempotent.
+
+No playback URL appears in this state. Resolving or refreshing media does not increment the room revision and therefore cannot create a competing synchronization timeline.
+
+## Browser media lifecycle
+
+`PlayerAdapterRouter` accepts only a resolved object containing both the stable `MediaRef` and a relay `playbackUrl`. It always mounts `NativeMediaAdapter`; there is no IFrame fallback.
+
+Resolution is:
+
+```text
+room MediaRef
+  → POST control media-grants with room credential
+  → POST media /resolve with mg1 grant + exact MediaRef
+  → choose progressive relay_url
+  → set video.crossOrigin
+  → set video.src
+```
+
+The client caches the current resolved capability without putting it into shared state. On `401`, `403`, `404`, `410`, or a native media error, it performs one bounded single-flight re-resolution, remounts the source, restores playback rate and expected position, and resumes only if the room state is playing. Recovery is cancelled when the room changes media.
+
+## Media resolver
+
+The resolver constructs the canonical YouTube URL from the validated eleven-character ID. yt-dlp is configured for:
+
+- metadata only, no playlist, download, storage, or ffmpeg transcoding;
+- a Node 22 JavaScript runtime and the matching `yt-dlp-ejs` package;
+- muxed, progressive MP4 candidates suitable for a native browser player;
+- optional cookie file and proxy;
+- a provider-neutral PO-token plugin argument, defaulting to the internal bgutil provider.
+
+The public response is an allowlisted projection: stable media identity, title/duration, and opaque progressive stream capabilities. Upstream URLs, headers, cookies, format IDs, and raw yt-dlp dictionaries stay process-local.
+
+## Relay and 403 recovery
+
+`GET /relay/{capability}` requires exactly one valid bytes Range. The upstream must answer with consistent `206`, `Content-Range`, `Content-Length`, `Content-Type: video/mp4`, and `Accept-Ranges: bytes`. Encoded content and redirects are rejected so byte offsets remain exact.
+
+`HEAD` is implemented as an upstream `GET bytes=0-0` probe because media origins do not consistently implement HEAD. The one-byte body is not consumed, while the full representation length is derived from `Content-Range`.
+
+When an upstream target returns 403:
+
+1. The failed target is invalidated only if its revision is still current.
+2. Concurrent requests for that media/format/revision share one refresh task.
+3. A global semaphore and deadline bound yt-dlp work.
+4. The resolver reselects the exact previous format and revalidates the replacement URL.
+5. Compare-and-swap prevents a slow refresh from overwriting a newer resolve.
+6. The original Range is retried once.
+7. A failed generation enters a short cooldown and returns a generic 502.
+
+Disconnecting one browser request cannot cancel the shared refresh used by other peers. Every upstream response is closed on success, error, or cancellation.
+
+## Volatile state and scaling
+
+This version intentionally has no database or shared cache.
+
+| State | Owner | Lifetime |
+| --- | --- | --- |
+| Rooms, messages, playback, members | Node process | Empty room expires after 24 hours; all state is lost on restart |
+| Guest credential records | Node process | 12 hours or room/process expiry |
+| Media grant | Signed token | Maximum 120 seconds |
+| Relay capability and target | FastAPI process | 15-minute sliding idle TTL, bounded to 2,048 sessions |
+| 403 refresh flight/cache | FastAPI process | Request/revision scoped |
+
+Run exactly one control replica and one Uvicorn worker. Horizontal scaling requires an explicit shared room store and a shared or reconstructable relay-capability design; merely adding replicas would create inconsistent state.
+
+## Failure behavior
+
+- Control restart: existing WebSockets close and all rooms disappear. Create a new room.
+- Media restart: rooms remain, but relay capabilities disappear. The browser obtains a new grant and resolves again.
+- PO-token provider unavailable: media health can remain up, but some YouTube resolves may fail; inspect provider and media logs.
+- Expired Google URL: transparent server-side 403 refresh, followed by bounded browser re-resolution if necessary.
+- YouTube challenge or egress block: add/update the documented PO provider, EJS components, cookie file, or proxy; do not expose raw upstream URLs as a workaround.
+- Foreign or missing browser Origin: reject before room creation, resolution, or relay work.
+
+## Visual system
+
+The product keeps three deliberately separate visual layers:
+
+1. Windows 98 desktop and Internet Explorer shell: taskbar, menus, title bars, toolbar, desktop icons, and window controls.
+2. Late-1990s web content: dense portal layout, underlined links, small badges, visitor-counter styling, and a separate chat window.
+3. Modern browser behavior: real WebSockets, native video, screenshots, resilient media capabilities, keyboard-safe forms, and persisted window layouts.
+
+The window manager uses real DOM elements and supports dragging, eight-direction resizing, focus/z-order, minimize, maximize, restore, close/reopen, taskbar switching, and local layout persistence. Pixelated MS Sans Serif is served locally and integer HiDPI scaling preserves bitmap proportions.
+
+Asset sources and licenses are recorded in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
