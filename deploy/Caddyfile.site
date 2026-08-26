@@ -51,6 +51,12 @@ dreamstream.lucius7.dev {
 			reverse_proxy 127.0.0.1:8787 {
 				header_down -Server
 				header_down -X-Powered-By
+				header_down -Access-Control-Allow-Origin
+				header_down -Access-Control-Allow-Methods
+				header_down -Access-Control-Allow-Headers
+				header_down -Access-Control-Expose-Headers
+				header_down -Access-Control-Max-Age
+				header_down -Vary
 			}
 		}
 
@@ -60,6 +66,12 @@ dreamstream.lucius7.dev {
 				flush_interval -1
 				header_down -Server
 				header_down -X-Powered-By
+				header_down -Access-Control-Allow-Origin
+				header_down -Access-Control-Allow-Methods
+				header_down -Access-Control-Allow-Headers
+				header_down -Access-Control-Expose-Headers
+				header_down -Access-Control-Max-Age
+				header_down -Vary
 			}
 		}
 

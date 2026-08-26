@@ -33,6 +33,14 @@ test('Caddy rejects missing or foreign Origins before any proxy or fallback', as
     assert.ok(missing > foreign && missing < control, `${filename} missing Origin order`);
     assert.ok(control < media && media < fallback, `${filename} proxy/fallback order`);
     assert.doesNotMatch(caddy, /^\s*log\s*\{/m);
+
+    const proxyBlocks = [...caddy.matchAll(/reverse_proxy[^\{]+\{([\s\S]*?)\n\s*\}/g)];
+    assert.equal(proxyBlocks.length, 2, `${filename} must define both production proxies`);
+    for (const [, proxyBlock] of proxyBlocks) {
+      assert.match(proxyBlock, /header_down -Access-Control-Allow-Origin/);
+      assert.match(proxyBlock, /header_down -Access-Control-Expose-Headers/);
+      assert.match(proxyBlock, /header_down -Vary/);
+    }
   }
 });
 
