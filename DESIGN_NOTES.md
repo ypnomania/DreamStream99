@@ -1,66 +1,115 @@
-# Design notes / references
+# Design and architecture notes
 
-这版把界面分成三层，避免“现代网站套 Win98 皮肤”的感觉：
+This document records DreamStream 99's visual boundaries, browser architecture, and Serverless direction. The current deployable version is a fully client-side GitHub Pages demo; the Cloudflare Worker and Durable Object are not yet included in this repository.
 
-1. **Windows 98 桌面 / IE 外壳**：标题栏、任务栏、地址栏、IE 工具栏、桌面图标、窗口拖动/缩放。
-2. **1998–2000 网页本体**：三栏 Portal、蓝色下划线链接、88×31 badge、访客计数器、小字号页脚、独立聊天室。
-3. **真实功能**：YouTube、截图，以及可替换 RoomClient 驱动的房间同步与聊天。
+## Visual layers
 
-## Serverless 边界
+The interface is deliberately divided into three layers so it feels like more than a modern website wearing a Win98 skin:
 
-- GitHub Pages 只承载静态 UI；默认 `DemoRoomClient` 提供可独立展示的成员、聊天和播放状态。
-- 正式运行时切换为 `WebSocketRoomClient`，连接 Cloudflare Worker。
-- Worker 负责房间创建、Token 校验和 WebSocket Upgrade；Durable Object 按房间保存一致状态并广播。
-- RoomClient 把 UI 与传输层隔离，核心入口是 `join()`、`sendPlayback()`、`sendChat()` 和 `onSnapshot()`。
+1. **Windows 98 desktop and IE shell:** title bars, taskbar, menus, address bars, toolbars, desktop icons, and window controls.
+2. **1998–2000 web content:** a three-column portal, blue underlined links, 88×31 badges, a visitor counter, small footer text, and a separate chat site.
+3. **Real browser features:** YouTube playback, screenshots, and `RoomClient`-driven room state and chat UI.
 
-## 主要参考
+The overall layout and DreamStream 99 brand are original. References were used only to study period details, proportions, information density, and interaction patterns.
 
-- 98.css — https://github.com/jdan/98.css
-- 1j01/os-gui — https://github.com/1j01/os-gui
-- Windows Icon Archive — https://github.com/limehawk/windows-icon-archive
-- Windows 98 Module 2 — The Internet — https://www.tech2u.com.au/training/tech2u/win98_2/internet.html
-- oldweb.today — https://github.com/oldweb-today/oldweb-today
-- Windows 98 Web Edition — https://github.com/azayrahmad/win98-web
-- Web Design Museum 1999 gallery — https://www.webdesignmuseum.org/gallery/year-1999
+## Serverless boundary
 
-整体页面布局和站点品牌是原创的；参考资料用于研究年代特征、比例、密度和交互。
+### Current delivery
 
-## 字体策略
+- GitHub Pages hosts the entire static UI.
+- `DemoRoomClient` simulates members, chat, permissions, and playback state in the browser.
+- The static build forces `WT_RUNTIME.mode = 'demo'` so Pages never depends accidentally on a backend.
+- `WebSocketRoomClient` implements native WebSocket requests, broadcast dispatch, timeouts, and automatic reconnection.
 
-不再使用 Canvas 截图/放大系统字体。
+### Planned stage
 
-- UI / 正文：拉丁字符使用 98.css 仓库中的 Pixelated MS Sans Serif，中文回退到文泉驿点阵宋体，基础字号为 12px。
-- Logo / 大标题：沿用同一本地点阵字体栈，通过字号和字重建立层级。
-- 4K 时不是把字体单独改成一个随意的大字号，而是把整个逻辑 Win98 桌面按 2× 整数比例显示，从而保持控件、像素图标和字体之间的比例。
+- A Cloudflare Worker will provide `POST /api/rooms`, token validation, and WebSocket upgrades.
+- A Durable Object per room will store playback state, members, permissions, and recent chat, then handle broadcasts.
+- WebSocket Hibernation will allow idle rooms to sleep while retaining client connections.
+- The production deployment will not require Node, Socket.IO, Redis, or a traditional database.
 
-## HiDPI
+The `server/` directory contains an earlier Express / Socket.IO synchronization prototype. It preserves the state model and provides test references, but it is not connected to the current `RoomClient` or deployed to Pages.
 
-`public/js/desktop.js` 建立一个逻辑分辨率桌面。自动模式同时参考：
+## RoomClient contract
 
-- `window.innerWidth / innerHeight`（CSS 像素）
-- `devicePixelRatio`
-- 估算的物理像素视口
+The UI depends only on the shared interface exposed by [`public/js/room-client.js`](public/js/room-client.js).
 
-这样 3840×2160 屏幕在 Windows 150% / 200% 缩放时不会因为 CSS 视口变小而误判成普通 1080p。
+| Type | Method / event | Purpose |
+| --- | --- | --- |
+| Command | `join()` | Join a room and receive its initial snapshot |
+| Command | `sendPlayback()` | Load, play, pause, seek, or change playback speed |
+| Command | `sendChat()` | Send a chat message |
+| Command | `updatePermissions()` | Update guest playback and chat permissions |
+| Command | `ping()` | Estimate the offset between client and server clocks |
+| Event | `onSnapshot()` | Receive a complete room snapshot |
+| Event | `onPresence()` | Receive the member list |
+| Event | `onPlayback()` | Receive playback state |
+| Event | `onChat()` | Receive one chat message |
+| Event | `onPermissions()` | Receive permission changes |
+| Event | `onConnection()` | Receive connection state |
+
+WebSocket frames use this basic format:
+
+```js
+// Request
+{ type, requestId, payload }
+
+// Response
+{ type: 'response', requestId, ok, payload }
+
+// Broadcast example
+{ type: 'playback:state', payload }
+```
+
+## Playback state model
+
+Shared playback uses a server anchor instead of broadcasting the player's current time continuously:
+
+- `revision`: monotonically increasing state version;
+- `videoId`: YouTube video ID;
+- `paused`: paused state;
+- `anchorSeconds`: playback position at the anchor;
+- `anchorServerMs`: server time corresponding to the anchor;
+- `playbackRate`: playback speed;
+- `actionId`: idempotency identifier for a command.
+
+The playing position can be derived as `anchorSeconds + elapsed × playbackRate`. Clients calibrate their clocks with `ping()` and ignore stale state using `revision`.
 
 ## Window manager
 
-两个主浏览器窗口都是同一个轻量窗口管理器管理的真实 DOM 窗口：
+Both main browser windows are real DOM elements controlled by the same lightweight window manager rather than Canvas screenshots:
 
-- title bar drag
-- 八方向 resize
-- focus / z-index
-- minimize
-- maximize / restore
-- close / reopen
-- taskbar integration
-- localStorage layout persistence
+- title bar dragging;
+- eight-direction resizing;
+- focus and `z-index`;
+- minimize, maximize, and restore;
+- close, reopen from a desktop icon, and taskbar switching;
+- layout persistence in `localStorage`.
 
-行为参考了 os-gui 一类 Win9x Web GUI 项目，但窗口管理代码是本项目自己的实现。
+Window behavior draws on Win9x web GUI references, while the implementation is original to this project.
 
-## 图像素材策略
+## Font and HiDPI strategy
 
-- IE 工具栏小图：来自 Windows 98 / IE 历史界面截图的小尺寸裁切，用于个人复刻。
-- Win98 系统图标：优先通过 Windows icon archives 的外部 URL 引用，并保留本地 fallback。
-- 历史 GeoCities / 88×31 图像版权来源很杂，因此没有批量打包第三方旧网页素材。
-- 用户自己的 Logo、GIF、背景统一放到 `public/assets/custom/`，路径集中在 `public/config.js`。
+- UI, body, and heading text use the bundled Pixelated MS Sans Serif regular and bold fonts.
+- The base size is 12px, with no Canvas pre-rasterization.
+- HiDPI mode scales the entire logical desktop instead of enlarging text alone.
+- Automatic scaling considers the CSS viewport, `devicePixelRatio`, and estimated physical pixels.
+- Integer scales of `1`, `2`, or `3` are recommended to preserve the proportions of controls, icons, and bitmap text.
+
+## Image asset strategy
+
+- IE toolbar artwork keeps the small native scale of the historical interface.
+- Win98 system icons prefer archive references, with local fallbacks in critical locations.
+- GeoCities and historical 88×31 assets with unclear rights are not bundled in bulk.
+- Custom logos, GIFs, and backgrounds belong in `public/assets/custom/` and are configured through `public/assets-config.js`.
+- Sources and licenses are recorded in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+
+## Main references
+
+- [98.css](https://github.com/jdan/98.css)
+- [1j01/os-gui](https://github.com/1j01/os-gui)
+- [Windows Icon Archive](https://github.com/limehawk/windows-icon-archive)
+- [Windows 98 Module 2 — The Internet](https://www.tech2u.com.au/training/tech2u/win98_2/internet.html)
+- [oldweb.today](https://github.com/oldweb-today/oldweb-today)
+- [Windows 98 Web Edition](https://github.com/azayrahmad/win98-web)
+- [Web Design Museum — 1999 gallery](https://www.webdesignmuseum.org/gallery/year-1999)

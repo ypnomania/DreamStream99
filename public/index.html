@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -14,7 +14,7 @@
 </head>
 <body>
   <div class="desktop" data-bg-asset="desktopBackground" aria-label="Windows 98 style desktop">
-    <div id="desktopIcons" class="desktop-icons" aria-label="桌面图标"></div>
+    <div id="desktopIcons" class="desktop-icons" aria-label="Desktop icons"></div>
 
     <main class="desktop-workspace">
       <!-- LEFT: fake IE browser containing the watch-party site -->
@@ -25,15 +25,15 @@
             <span id="mediaWindowTitle" data-copy="mediaTitle">DreamStream 99</span>
           </div>
           <div class="title-bar-controls">
-            <button class="caption-button minimize" type="button" data-window-action="minimize" aria-label="最小化" title="最小化"></button>
-            <button class="caption-button maximize" type="button" data-window-action="maximize" aria-label="最大化" title="最大化"></button>
-            <button class="caption-button close" type="button" data-window-action="close" aria-label="关闭" title="关闭"></button>
+            <button class="caption-button minimize" type="button" data-window-action="minimize" aria-label="Minimize" title="Minimize"></button>
+            <button class="caption-button maximize" type="button" data-window-action="maximize" aria-label="Maximize" title="Maximize"></button>
+            <button class="caption-button close" type="button" data-window-action="close" aria-label="Close" title="Close"></button>
           </div>
         </div>
 
-        <nav class="menu-bar browser-menu" aria-label="浏览器菜单">
-          <span data-copy="menuFile">文件</span><span data-copy="menuEdit">编辑</span><span data-copy="menuView">查看</span>
-          <span data-copy="menuFavorites">收藏</span><span data-copy="menuTools">工具</span><span data-copy="menuHelp">帮助</span>
+        <nav class="menu-bar browser-menu" aria-label="Browser menu">
+          <span data-copy="menuFile">File</span><span data-copy="menuEdit">Edit</span><span data-copy="menuView">View</span>
+          <span data-copy="menuFavorites">Favorites</span><span data-copy="menuTools">Tools</span><span data-copy="menuHelp">Help</span>
         </nav>
 
         <div class="browser-toolbar" aria-hidden="true">
@@ -52,10 +52,10 @@
         </div>
 
         <div class="address-bar">
-          <span class="address-label" data-copy="addressLabel">地址</span>
+          <span class="address-label" data-copy="addressLabel">Address</span>
           <div class="address-field"><img src="/assets/retro/ie.png" data-asset="windowIcon" data-fallback="/assets/retro/ie.png" alt="" /><span id="mediaAddress">http://dreamstream99.local/</span></div>
-          <button class="address-go" type="button"><span data-copy="go">转到</span></button>
-          <button class="address-links" type="button"><span data-copy="links">链接</span> »</button>
+          <button class="address-go" type="button"><span data-copy="go">Go</span></button>
+          <button class="address-links" type="button"><span data-copy="links">Links</span> »</button>
         </div>
 
         <div class="browser-page media-site" id="mediaPage" data-bg-asset="site.mediaPageBackground">
@@ -71,9 +71,9 @@
           </header>
 
           <nav class="retro-site-nav">
-            <a href="#" data-copy="mediaNavHome">首页</a><b>|</b><a href="#" data-copy="mediaNavWatch">一起看</a><b>|</b>
-            <a href="#" data-copy="mediaNavChannels">频道</a><b>|</b><a href="#" data-copy="mediaNavCommunity">社区</a><b>|</b>
-            <a href="#" data-copy="mediaNavDownloads">下载</a><b>|</b><a href="#" data-copy="mediaNavTop">排行榜</a><b>|</b><a href="#" data-copy="mediaNavHelp">帮助</a>
+            <a href="#" data-copy="mediaNavHome">Home</a><b>|</b><a href="#" data-copy="mediaNavWatch">Watch Together</a><b>|</b>
+            <a href="#" data-copy="mediaNavChannels">Channels</a><b>|</b><a href="#" data-copy="mediaNavCommunity">Community</a><b>|</b>
+            <a href="#" data-copy="mediaNavDownloads">Downloads</a><b>|</b><a href="#" data-copy="mediaNavTop">Top Charts</a><b>|</b><a href="#" data-copy="mediaNavHelp">Help</a>
           </nav>
 
           <div class="site-marquee"><marquee scrollamount="3">★ Welcome cyber-friends! ★ Share the room link and watch together in real time! ★ New smileys added! ★</marquee></div>
@@ -81,27 +81,27 @@
           <div class="media-site-grid">
             <aside class="site-column left-site-column">
               <section class="web-box blue-box">
-                <h2 data-copy="siteNavigation">站点导航</h2>
+                <h2 data-copy="siteNavigation">SITE NAVIGATION</h2>
                 <ul class="link-list icon-link-list">
-                  <li><img data-asset="siteIcons.nowPlaying" src="/assets/icons/play.png" data-fallback="/assets/icons/play.png" alt="" /><a href="#" data-copy="navNowPlaying">正在播放</a></li>
-                  <li><img data-asset="siteIcons.rooms" src="/assets/retro/globe.png" data-fallback="/assets/retro/globe.png" alt="" /><a href="#" data-copy="navWatchRooms">观影房间</a></li>
-                  <li><img data-asset="siteIcons.movies" src="/assets/retro/cool.png" data-fallback="/assets/retro/cool.png" alt="" /><a href="#" data-copy="navMovies">电影</a></li>
-                  <li><img data-asset="siteIcons.music" src="/assets/retro/speaker.png" data-fallback="/assets/retro/speaker.png" alt="" /><a href="#" data-copy="navMusic">音乐视频</a></li>
-                  <li><img data-asset="siteIcons.live" src="/assets/retro/star.png" data-fallback="/assets/retro/star.png" alt="" /><a href="#" data-copy="navLive">直播活动</a></li>
-                  <li><img data-asset="siteIcons.favorites" src="/assets/retro/favorites.png" data-fallback="/assets/retro/favorites.png" alt="" /><a href="#" data-copy="navFavorites">我的收藏</a></li>
-                  <li><img data-asset="siteIcons.directory" src="/assets/retro/folder.png" data-fallback="/assets/retro/folder.png" alt="" /><a href="#" data-copy="navRoomDirectory">房间目录</a></li>
-                  <li><img data-asset="siteIcons.forum" src="/assets/retro/guestbook.png" data-fallback="/assets/retro/guestbook.png" alt="" /><a href="#" data-copy="navForum">留言板</a><i> NEW!</i></li>
-                  <li><img data-asset="siteIcons.help" src="/assets/retro/star.png" data-fallback="/assets/retro/star.png" alt="" /><a href="#" data-copy="navFaq">帮助与 FAQ</a></li>
+                  <li><img data-asset="siteIcons.nowPlaying" src="/assets/icons/play.png" data-fallback="/assets/icons/play.png" alt="" /><a href="#" data-copy="navNowPlaying">Now Playing</a></li>
+                  <li><img data-asset="siteIcons.rooms" src="/assets/retro/globe.png" data-fallback="/assets/retro/globe.png" alt="" /><a href="#" data-copy="navWatchRooms">Watch Rooms</a></li>
+                  <li><img data-asset="siteIcons.movies" src="/assets/retro/cool.png" data-fallback="/assets/retro/cool.png" alt="" /><a href="#" data-copy="navMovies">Movies</a></li>
+                  <li><img data-asset="siteIcons.music" src="/assets/retro/speaker.png" data-fallback="/assets/retro/speaker.png" alt="" /><a href="#" data-copy="navMusic">Music Videos</a></li>
+                  <li><img data-asset="siteIcons.live" src="/assets/retro/star.png" data-fallback="/assets/retro/star.png" alt="" /><a href="#" data-copy="navLive">Live Events</a></li>
+                  <li><img data-asset="siteIcons.favorites" src="/assets/retro/favorites.png" data-fallback="/assets/retro/favorites.png" alt="" /><a href="#" data-copy="navFavorites">My Favorites</a></li>
+                  <li><img data-asset="siteIcons.directory" src="/assets/retro/folder.png" data-fallback="/assets/retro/folder.png" alt="" /><a href="#" data-copy="navRoomDirectory">Room Directory</a></li>
+                  <li><img data-asset="siteIcons.forum" src="/assets/retro/guestbook.png" data-fallback="/assets/retro/guestbook.png" alt="" /><a href="#" data-copy="navForum">Message Board</a><i> NEW!</i></li>
+                  <li><img data-asset="siteIcons.help" src="/assets/retro/star.png" data-fallback="/assets/retro/star.png" alt="" /><a href="#" data-copy="navFaq">Help &amp; FAQ</a></li>
                 </ul>
               </section>
 
               <section class="web-box login-box">
-                <h2 data-copy="memberLogin">会员登录</h2>
-                <label><span data-copy="nicknameLabel">昵称</span><input type="text" value="Guest_99" readonly /></label>
-                <label><span data-copy="fakePassword">密码</span><input type="password" value="123456" readonly /></label>
-                <label class="fake-checkbox"><input type="checkbox" /> <span data-copy="rememberMe">记住我</span></label>
-                <button type="button" class="tiny-button" data-copy="fakeLogin">登录!</button>
-                <a href="#" data-copy="fakeJoin">立即注册（免费!）</a>
+                <h2 data-copy="memberLogin">MEMBER LOGIN</h2>
+                <label><span data-copy="nicknameLabel">Nickname</span><input type="text" value="Guest_99" readonly /></label>
+                <label><span data-copy="fakePassword">Password</span><input type="password" value="123456" readonly /></label>
+                <label class="fake-checkbox"><input type="checkbox" /> <span data-copy="rememberMe">Remember me</span></label>
+                <button type="button" class="tiny-button" data-copy="fakeLogin">Log In!</button>
+                <a href="#" data-copy="fakeJoin">Sign Up Now (FREE!)</a>
               </section>
 
               <div class="badge-stack">
@@ -113,7 +113,7 @@
             <main class="watch-column">
               <section class="watch-panel">
                 <h1 class="now-watching" data-copy="nowWatching">★ NOW WATCHING TOGETHER! ★</h1>
-                <div class="room-line"><span data-copy="currentRoom">当前房间</span>: <strong id="roomLabel" class="room-code">------</strong> <span id="roleBadge" class="role-badge is-hidden"></span> · <span id="watcherCountMirror">0</span> <span data-copy="watchingNow">人正在房间中</span> · <span id="syncStatus" class="sync-status" data-state="offline" data-copy="statusWaiting">等待连接</span></div>
+                <div class="room-line"><span data-copy="currentRoom">Current Room</span>: <strong id="roomLabel" class="room-code">------</strong> <span id="roleBadge" class="role-badge is-hidden"></span> · <span id="watcherCountMirror">0</span> <span data-copy="watchingNow">watching now</span> · <span id="syncStatus" class="sync-status" data-state="offline" data-copy="statusWaiting">Waiting to connect</span></div>
 
                 <div class="player-frame">
                   <div class="player-stage" id="playerStage">
@@ -131,46 +131,46 @@
                     </div>
                     <div id="youtubeBadge" class="youtube-badge is-hidden">YouTube</div>
                     <div id="playerErrorOverlay" class="player-message-overlay is-hidden" role="alert">
-                      <strong id="playerErrorMessage">YouTube 播放器网络超时</strong>
-                      <button id="retryPlayerButton" type="button" data-copy="retryPlayer">重试</button>
+                      <strong id="playerErrorMessage">The YouTube player timed out</strong>
+                      <button id="retryPlayerButton" type="button" data-copy="retryPlayer">Retry</button>
                     </div>
                     <div id="unmuteOverlay" class="player-message-overlay unmute-overlay is-hidden">
-                      <button id="unmuteButton" type="button" data-copy="unmuteAndSync">📢 点击取消静音并同步</button>
+                      <button id="unmuteButton" type="button" data-copy="unmuteAndSync">Unmute &amp; Sync</button>
                     </div>
                   </div>
                 </div>
 
                 <div class="retro-player-controls">
-                  <button id="playButton" class="media-control play-button" type="button" disabled data-icon="play" aria-label="播放"></button>
-                  <button id="backButton" class="media-control rewind-button" type="button" disabled aria-label="后退 10 秒">◀◀</button>
-                  <button id="forwardButton" class="media-control fast-forward-button" type="button" disabled aria-label="前进 10 秒">▶▶</button>
+                  <button id="playButton" class="media-control play-button" type="button" disabled data-icon="play" aria-label="Play"></button>
+                  <button id="backButton" class="media-control rewind-button" type="button" disabled aria-label="Back 10 seconds">◀◀</button>
+                  <button id="forwardButton" class="media-control fast-forward-button" type="button" disabled aria-label="Forward 10 seconds">▶▶</button>
                   <span id="currentTime" class="time-label">0:00</span>
                   <input id="seekRange" class="seek-range" type="range" min="0" max="100" value="0" step="0.1" disabled />
                   <span id="durationTime" class="time-label">--:--</span>
                   <img class="speaker-icon" src="/assets/retro/speaker.png" alt="" />
-                  <select id="rateSelect" disabled aria-label="播放速度">
+                  <select id="rateSelect" disabled aria-label="Playback speed">
                     <option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>1×</option>
                     <option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option>
                   </select>
-                  <button id="fullscreenButton" class="media-control fullscreen-button" type="button" aria-label="全屏">□</button>
+                  <button id="fullscreenButton" class="media-control fullscreen-button" type="button" aria-label="Fullscreen">□</button>
                 </div>
 
                 <div class="source-row">
-                  <label for="sourceInput" data-copy="sourceLabel">视频地址:</label>
-                  <input id="sourceInput" type="url" inputmode="url" autocomplete="off" data-placeholder="sourcePlaceholder" placeholder="YouTube 视频地址" />
-                  <button id="loadButton" class="default-button" type="button" data-copy="loadVideo">打开</button>
+                  <label for="sourceInput" data-copy="sourceLabel">Video URL:</label>
+                  <input id="sourceInput" type="url" inputmode="url" autocomplete="off" data-placeholder="sourcePlaceholder" placeholder="YouTube video URL" />
+                  <button id="loadButton" class="default-button" type="button" data-copy="loadVideo">Load</button>
                 </div>
 
                 <div class="room-actions">
-                  <button id="copyInviteButton" class="web-action pink" type="button" data-copy="copyInvite">邀请朋友!</button>
+                  <button id="copyInviteButton" class="web-action pink" type="button" data-copy="copyInvite">Invite Friends!</button>
                   <button class="web-action blue" type="button">ROOM CHAT</button>
                   <button class="web-action purple" type="button">POP OUT</button>
                   <button class="web-action gold" type="button">★ ADD FAVE</button>
                 </div>
                 <fieldset id="roomPermissions" class="room-permissions" hidden>
-                  <legend data-copy="guestPermissions">访客权限</legend>
-                  <label><input id="guestControlInput" type="checkbox" /> <span data-copy="allowGuestControl">允许控制播放</span></label>
-                  <label><input id="guestChatInput" type="checkbox" checked /> <span data-copy="allowGuestChat">允许发送聊天</span></label>
+                  <legend data-copy="guestPermissions">Guest Permissions</legend>
+                  <label><input id="guestControlInput" type="checkbox" /> <span data-copy="allowGuestControl">Allow playback control</span></label>
+                  <label><input id="guestChatInput" type="checkbox" checked /> <span data-copy="allowGuestChat">Allow chat messages</span></label>
                 </fieldset>
               </section>
 
@@ -212,7 +212,7 @@
         </div>
 
         <div class="status-bar browser-status">
-          <div class="status-bar-field"><img src="/assets/retro/ie.png" data-asset="windowIcon" data-fallback="/assets/retro/ie.png" alt="" /><span id="mediaStatusField" data-copy="statusWaiting">等待连接</span></div>
+          <div class="status-bar-field"><img src="/assets/retro/ie.png" data-asset="windowIcon" data-fallback="/assets/retro/ie.png" alt="" /><span id="mediaStatusField" data-copy="statusWaiting">Waiting to connect</span></div>
           <div class="status-bar-field internet-zone"><img src="/assets/retro/globe.png" alt="" /> Internet</div>
         </div>
       </section>
@@ -222,11 +222,11 @@
         <div class="title-bar">
           <div class="title-bar-text"><img src="/assets/retro/ie.png" data-asset="windowIcon" data-fallback="/assets/retro/ie.png" alt="" class="title-icon" /><span id="chatWindowTitle" data-copy="chatTitle">Dial-Up Lounge</span></div>
           <div class="title-bar-controls">
-            <button class="caption-button minimize" type="button" data-window-action="minimize" aria-label="最小化" title="最小化"></button><button class="caption-button maximize" type="button" data-window-action="maximize" aria-label="最大化" title="最大化"></button><button class="caption-button close" type="button" data-window-action="close" aria-label="关闭" title="关闭"></button>
+            <button class="caption-button minimize" type="button" data-window-action="minimize" aria-label="Minimize" title="Minimize"></button><button class="caption-button maximize" type="button" data-window-action="maximize" aria-label="Maximize" title="Maximize"></button><button class="caption-button close" type="button" data-window-action="close" aria-label="Close" title="Close"></button>
           </div>
         </div>
-        <nav class="menu-bar browser-menu" aria-label="浏览器菜单">
-          <span data-copy="menuFile">文件</span><span data-copy="menuEdit">编辑</span><span data-copy="menuView">查看</span><span data-copy="menuFavorites">收藏</span><span data-copy="menuTools">工具</span><span data-copy="menuHelp">帮助</span>
+        <nav class="menu-bar browser-menu" aria-label="Browser menu">
+          <span data-copy="menuFile">File</span><span data-copy="menuEdit">Edit</span><span data-copy="menuView">View</span><span data-copy="menuFavorites">Favorites</span><span data-copy="menuTools">Tools</span><span data-copy="menuHelp">Help</span>
         </nav>
         <div class="browser-toolbar compact-toolbar" aria-hidden="true">
           <div class="browser-tool"><img data-asset="browserToolbar.back" src="/assets/win98/ie-toolbar/back.png" alt="" /><span>Back</span></div><div class="browser-tool disabled"><img data-asset="browserToolbar.forward" src="/assets/win98/ie-toolbar/forward.png" alt="" /><span>Forward</span></div>
@@ -235,8 +235,8 @@
           <div class="browser-tool"><img data-asset="browserToolbar.search" src="/assets/win98/ie-toolbar/search.png" alt="" /><span>Search</span></div><div class="browser-tool"><img data-asset="browserToolbar.mail" src="/assets/win98/ie-toolbar/mail.png" alt="" /><span>Mail</span></div>
         </div>
         <div class="address-bar">
-          <span class="address-label" data-copy="addressLabel">地址</span><div class="address-field"><img src="/assets/retro/ie.png" data-asset="windowIcon" data-fallback="/assets/retro/ie.png" alt="" /><span id="chatAddress">http://dialuplounge.local/lobby.shtml</span></div>
-          <button class="address-go" type="button"><span data-copy="go">转到</span></button>
+          <span class="address-label" data-copy="addressLabel">Address</span><div class="address-field"><img src="/assets/retro/ie.png" data-asset="windowIcon" data-fallback="/assets/retro/ie.png" alt="" /><span id="chatAddress">http://dialuplounge.local/lobby.shtml</span></div>
+          <button class="address-go" type="button"><span data-copy="go">Go</span></button>
         </div>
 
         <div class="browser-page chat-site" data-bg-asset="site.chatPageBackground">
@@ -245,14 +245,14 @@
             <div class="chat-logo-icons"><img data-asset="site.chatIcon" src="/assets/retro/chat.png" data-fallback="/assets/retro/chat.png" alt="" /><img src="/assets/retro/computer.png" alt="" /></div>
             <div><div class="chat-brand" data-config-oldweb="chatBrand">Dial-Up Lounge</div><div class="chat-tagline" data-config-oldweb="chatTagline">THE CHAT SPOT!</div></div>
           </header>
-          <nav class="chat-site-nav"><a href="#" data-copy="chatLobby">大厅</a> · <a href="#" data-copy="chatRooms">房间</a> · <a href="#" data-copy="chatProfiles">个人资料</a> · <a href="#" data-copy="chatSearch">搜索</a> · <a href="#" data-copy="mediaNavHelp">帮助</a> · <a href="#" data-copy="chatRules">规则</a></nav>
-          <div class="chat-topic"><span>» <span data-copy="currentRoom">当前房间</span>: <strong id="chatRoomMirror">------</strong></span><span>» <span data-copy="chatTopicPrefix">主题:</span> <b data-copy="chatTopic">今晚看什么？</b></span></div>
+          <nav class="chat-site-nav"><a href="#" data-copy="chatLobby">Lobby</a> · <a href="#" data-copy="chatRooms">Rooms</a> · <a href="#" data-copy="chatProfiles">Profiles</a> · <a href="#" data-copy="chatSearch">Search</a> · <a href="#" data-copy="mediaNavHelp">Help</a> · <a href="#" data-copy="chatRules">Rules</a></nav>
+          <div class="chat-topic"><span>» <span data-copy="currentRoom">Current Room</span>: <strong id="chatRoomMirror">------</strong></span><span>» <span data-copy="chatTopicPrefix">Topic:</span> <b data-copy="chatTopic">What should we watch tonight?</b></span></div>
 
           <div class="chat-layout">
             <aside class="chat-members-panel">
-              <h2><span data-copy="membersTitle">成员</span> (<span id="memberCount">0</span>)</h2>
+              <h2><span data-copy="membersTitle">Members</span> (<span id="memberCount">0</span>)</h2>
               <div id="members" class="member-list"></div>
-              <div class="presence-legend"><span><i class="presence online"></i><span data-copy="onlineLegend">在线</span></span><span><i class="presence away"></i><span data-copy="awayLegend">离开</span></span><span><i class="presence busy"></i><span data-copy="busyLegend">忙碌</span></span></div>
+              <div class="presence-legend"><span><i class="presence online"></i><span data-copy="onlineLegend">Online</span></span><span><i class="presence away"></i><span data-copy="awayLegend">Away</span></span><span><i class="presence busy"></i><span data-copy="busyLegend">Busy</span></span></div>
             </aside>
             <section class="chat-transcript-wrap">
               <div class="chat-welcome" data-copy="chatWelcome">Welcome to Dial-Up Lounge! Be cool & have fun! :-)</div>
@@ -261,21 +261,21 @@
           </div>
 
           <div class="smiley-strip" aria-hidden="true">
-            <img src="/assets/retro/smile.png" alt="" /><img src="/assets/retro/wink.png" alt="" /><img src="/assets/retro/cool.png" alt="" /><img src="/assets/retro/smile.png" alt="" /><img src="/assets/retro/wink.png" alt="" /><img src="/assets/retro/cool.png" alt="" /><img src="/assets/retro/smile.png" alt="" /> <a href="#" data-copy="moreSmileys">更多 »</a>
+            <img src="/assets/retro/smile.png" alt="" /><img src="/assets/retro/wink.png" alt="" /><img src="/assets/retro/cool.png" alt="" /><img src="/assets/retro/smile.png" alt="" /><img src="/assets/retro/wink.png" alt="" /><img src="/assets/retro/cool.png" alt="" /><img src="/assets/retro/smile.png" alt="" /> <a href="#" data-copy="moreSmileys">More »</a>
           </div>
           <form id="chatForm" class="chat-form">
-            <textarea id="chatInput" rows="2" maxlength="1000" data-placeholder="chatPlaceholder" placeholder="输入消息…" disabled></textarea>
-            <button id="sendButton" class="default-button" type="submit" disabled data-copy="send">发送</button>
+            <textarea id="chatInput" rows="2" maxlength="1000" data-placeholder="chatPlaceholder" placeholder="Type a message..." disabled></textarea>
+            <button id="sendButton" class="default-button" type="submit" disabled data-copy="send">Send</button>
           </form>
-          <div class="chat-action-row"><button type="button" data-copy="changeRoom">换房间</button><button type="button" data-copy="whosHere">谁在线?</button><button type="button" data-copy="ignoreList">忽略列表</button><button type="button" data-copy="myProfile">我的资料</button></div>
+          <div class="chat-action-row"><button type="button" data-copy="changeRoom">Change Room</button><button type="button" data-copy="whosHere">Who's Here?</button><button type="button" data-copy="ignoreList">Ignore List</button><button type="button" data-copy="myProfile">My Profile</button></div>
           <footer class="chat-site-footer"><strong data-copy="coolLinks">COOL LINKS</strong><span><a href="#">Free Smilies!</a> · <a href="#">Chat Tips</a> · <a href="#">Webcams</a> · <a href="#">Games</a> · <a href="#">MP3 Jukebox</a> · <a href="#">Horoscopes</a></span></footer>
         </div>
-        <div class="status-bar browser-status"><div class="status-bar-field"><img src="/assets/retro/ie.png" data-asset="windowIcon" data-fallback="/assets/retro/ie.png" alt="" /><span data-copy="statusDone">完成</span></div><div class="status-bar-field internet-zone"><img src="/assets/retro/globe.png" alt="" /> Internet</div></div>
+        <div class="status-bar browser-status"><div class="status-bar-field"><img src="/assets/retro/ie.png" data-asset="windowIcon" data-fallback="/assets/retro/ie.png" alt="" /><span data-copy="statusDone">Done</span></div><div class="status-bar-field internet-zone"><img src="/assets/retro/globe.png" alt="" /> Internet</div></div>
       </aside>
     </main>
 
     <div class="taskbar">
-      <button class="start-button" tabindex="-1"><img class="start-logo" data-asset="startLogo" data-fallback="/assets/retro/windows-fallback.png" alt="" /><strong data-copy="taskStart">开始</strong></button>
+      <button class="start-button" tabindex="-1"><img class="start-logo" data-asset="startLogo" data-fallback="/assets/retro/windows-fallback.png" alt="" /><strong data-copy="taskStart">Start</strong></button>
       <div class="quick-launch"><img src="/assets/retro/ie.png" data-asset="windowIcon" data-fallback="/assets/retro/ie.png" alt="" /><img src="/assets/retro/mail-small.png" alt="" /><img src="/assets/retro/folder.png" alt="" /></div>
       <div class="task-divider"></div>
       <button class="task-button active" type="button" data-task-window="media"><img src="/assets/retro/ie.png" data-asset="windowIcon" data-fallback="/assets/retro/ie.png" alt="" /><span data-config-oldweb="mediaBrand">DreamStream 99</span></button>
@@ -287,12 +287,12 @@
 
   <dialog id="joinDialog" class="join-dialog">
     <form id="joinForm" method="dialog" class="win98-window join-window">
-      <div class="title-bar"><div class="title-bar-text"><img src="/assets/retro/globe.png" alt="" class="title-icon" /><span data-copy="joinTitle">连接到观影房间</span></div><div class="title-bar-controls"><button id="joinDialogClose" class="caption-button close" type="button" aria-label="关闭" title="关闭"></button></div></div>
+      <div class="title-bar"><div class="title-bar-text"><img src="/assets/retro/globe.png" alt="" class="title-icon" /><span data-copy="joinTitle">Connect to Watch Room</span></div><div class="title-bar-controls"><button id="joinDialogClose" class="caption-button close" type="button" aria-label="Close" title="Close"></button></div></div>
       <div class="window-body join-body">
         <div class="dialup-art"><img src="/assets/retro/computer.png" alt="" /><div><b>Internet Connection</b><span>TCP/IP · WebSocket</span></div></div>
-        <div class="join-room-row"><span data-copy="roomLabel">房间</span><strong id="joinRoomLabel">------</strong></div>
-        <label class="field-row-stacked" for="nicknameInput"><span data-copy="nicknameLabel">昵称</span><input id="nicknameInput" maxlength="24" autocomplete="nickname" data-placeholder="nicknamePlaceholder" placeholder="昵称" required /></label>
-        <div class="join-actions"><button class="default-button" type="submit" data-copy="joinButton">连接</button></div>
+        <div class="join-room-row"><span data-copy="roomLabel">Room</span><strong id="joinRoomLabel">------</strong></div>
+        <label class="field-row-stacked" for="nicknameInput"><span data-copy="nicknameLabel">Nickname</span><input id="nicknameInput" maxlength="24" autocomplete="nickname" data-placeholder="nicknamePlaceholder" placeholder="Nickname" required /></label>
+        <div class="join-actions"><button class="default-button" type="submit" data-copy="joinButton">Connect</button></div>
       </div>
     </form>
   </dialog>

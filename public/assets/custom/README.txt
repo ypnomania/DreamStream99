@@ -1,10 +1,10 @@
-把你自己的 PNG / GIF / JPG 放到这个文件夹，然后只改 public/assets-config.js。
+Place your PNG, GIF, or JPG files in this folder, then edit only public/assets-config.js.
 
-常用路径示例：
+Common path examples:
   /assets/custom/desktop.gif
   /assets/custom/media-logo.gif
   /assets/custom/media-bg.gif
   /assets/custom/chat-logo.gif
   /assets/custom/chat-bg.gif
 
-详细键名见项目根目录 ASSET_GUIDE.md。
+See ASSET_GUIDE.md in the project root for the complete list of keys.

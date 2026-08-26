@@ -1,15 +1,15 @@
-# 素材替换指南
+# Asset replacement guide
 
-这版新增了专门的 **`public/assets-config.js`**。最常换的图片只改这个文件即可；`config.js` 仍保存默认值。通常不需要改 HTML 或 CSS。
+Frequently replaced images are configured in **`public/assets-config.js`**, while `public/config.js` keeps the defaults. You normally do not need to edit HTML or CSS.
 
-## 最简单的用法
+## Quick start
 
-1. 把自己的 PNG / GIF / JPG 放到 `public/assets/custom/`。
-2. 打开 `public/assets-config.js`。
-3. 把对应的 `null` 改成 `/assets/custom/文件名`。
-4. 保存并刷新网页。无需重新执行 `npm install`。
+1. Place your PNG, GIF, or JPG files in `public/assets/custom/`.
+2. Open `public/assets-config.js`.
+3. Replace the relevant `null` with `/assets/custom/your-file-name`.
+4. Save and refresh the page. You do not need to run `npm install` again.
 
-例如：
+Example:
 
 ```js
 const overrides = {
@@ -25,34 +25,34 @@ const overrides = {
 };
 ```
 
-## 常用键
+## Common keys
 
-| 配置键 | 用途 | 默认显示方式 |
-|---|---|---|
-| `assets.desktopBackground` | Windows 桌面壁纸 | 居中铺满（cover） |
-| `assets.site.mediaHeaderLogo` | 左侧视频网站标题 Logo | 图片替代文字 Logo |
-| `assets.site.mediaHeaderBackground` | 左侧网站页眉背景 | cover |
-| `assets.site.mediaPageBackground` | 左侧网页正文背景 | 平铺 |
-| `assets.site.chatHeaderLogo` | 右侧聊天室标题 Logo | 图片替代文字 Logo |
-| `assets.site.chatHeaderBackground` | 右侧聊天室页眉背景 | cover |
-| `assets.site.chatPageBackground` | 右侧网页正文背景 | 平铺 |
-| `assets.browserToolbar.*` | IE 工具栏按钮图标 | 24×24 |
-| `assets.siteIcons.*` | 网站导航小图标 | 16×16 |
-| `desktopIcons[].icon` | 桌面图标 | 32×32 |
-| `assets.startLogo` | Start 按钮 Windows 标志 | 原始像素尺寸 |
+| Configuration key | Purpose | Default presentation |
+| --- | --- | --- |
+| `assets.desktopBackground` | Windows desktop wallpaper | Centered and covered |
+| `assets.site.mediaHeaderLogo` | Video site header logo | Image replaces the text logo |
+| `assets.site.mediaHeaderBackground` | Video site header background | Cover |
+| `assets.site.mediaPageBackground` | Video site page background | Repeated tile |
+| `assets.site.chatHeaderLogo` | Chat site header logo | Image replaces the text logo |
+| `assets.site.chatHeaderBackground` | Chat site header background | Cover |
+| `assets.site.chatPageBackground` | Chat site page background | Repeated tile |
+| `assets.browserToolbar.*` | IE toolbar button icons | 24×24 |
+| `assets.siteIcons.*` | Site navigation icons | 16×16 |
+| `desktopIcons[].icon` | Desktop icons | 32×32 |
+| `assets.startLogo` | Windows mark on the Start button | Native pixel size |
 
-在 `assets-config.js` 中：`null` 表示沿用默认素材；`''` 表示主动清空。`mediaHeaderLogo` / `chatHeaderLogo` 清空后会自动回到文字 Logo。
+In `assets-config.js`, `null` keeps the default asset and `''` clears it intentionally. Clearing `mediaHeaderLogo` or `chatHeaderLogo` restores the corresponding text logo.
 
-## 90 年代网页图片建议
+## 1990s web artwork tips
 
-- Logo：透明 GIF/PNG，尽量不要直接做成超大高清图。
-- 小按钮/Badge：88×31 很有年代感。
-- 平铺背景：32×32、64×64、128×128 的小 GIF/PNG 更像当年的网页。
-- 像素素材不要用浏览器把 17px 拉成 24px；尽量准备目标尺寸或整数倍，并保留 `image-rendering: pixelated`。
+- Logos: use transparent GIF or PNG files and avoid unnecessarily large high-resolution images.
+- Small buttons and badges: 88×31 pixels strongly evokes the period.
+- Tiled backgrounds: small 32×32, 64×64, or 128×128 GIF and PNG files fit the era.
+- Pixel artwork: prepare the target size or an integer multiple instead of stretching 17px artwork to 24px. Keep `image-rendering: pixelated` enabled.
 
-## 4K / UI 大小
+## 4K and UI size
 
-在 `config.js`：
+In `public/config.js`:
 
 ```js
 display: {
@@ -60,20 +60,20 @@ display: {
 }
 ```
 
-`auto` 会结合 `devicePixelRatio` 识别 4K + Windows 125%/150%/200% 缩放。若你希望强制 Win98 界面放大一倍，直接写：
+`auto` combines `devicePixelRatio` with viewport dimensions to detect 4K displays at 125%, 150%, or 200% Windows scaling. To force the Win98 interface to double in size, set:
 
 ```js
 uiScale: 2,
 ```
 
-只建议使用整数 `1 / 2 / 3`，这样像素图和点阵字体的比例最稳定。
+Use integer values such as `1`, `2`, or `3` to keep pixel artwork and bitmap text in stable proportions.
 
-## 重置窗口/图标位置
+## Reset window and icon positions
 
-如果把窗口拖乱了，访问一次：
+If windows or icons are out of place, visit:
 
 ```text
 http://localhost:3000/?resetLayout=1
 ```
 
-它只清除窗口和桌面图标位置，不会清掉昵称等其它设置。
+This clears only saved window and desktop icon positions. It does not remove the saved nickname or other settings.

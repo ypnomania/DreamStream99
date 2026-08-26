@@ -12,7 +12,7 @@ function renderOne(element, settings) {
   const sourceSize = clampInteger(element.dataset.pixelSource, settings.sourceSize || 12, 8, 24);
   const scale = clampInteger(element.dataset.pixelScale, settings.defaultScale || 2, 1, 6);
   const weight = element.dataset.pixelWeight || '700';
-  const fontFamily = settings.fontFamily || '"Pixelated MS Sans Serif", "WenQuanYi Bitmap Song 12px", "MS Sans Serif", sans-serif';
+  const fontFamily = settings.fontFamily || '"Pixelated MS Sans Serif", "MS Sans Serif", sans-serif';
   const font = `${weight} ${sourceSize}px ${fontFamily}`;
 
   // Draw once at the small source resolution, then let CSS upscale the already-rasterized bitmap.

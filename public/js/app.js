@@ -16,7 +16,7 @@ const runtime = {
 };
 const isDemoMode = runtime.mode === 'demo';
 const roomClient = createRoomClient(runtime);
-const CAPTURE_FONT_FAMILY = config.theme?.fontFamily || '"Pixelated MS Sans Serif", "WenQuanYi Bitmap Song 12px", "MS Sans Serif", sans-serif';
+const CAPTURE_FONT_FAMILY = config.theme?.fontFamily || '"Pixelated MS Sans Serif", "MS Sans Serif", sans-serif';
 
 function t(key, values = {}) {
   const template = copy[key];

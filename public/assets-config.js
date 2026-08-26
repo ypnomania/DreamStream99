@@ -1,23 +1,23 @@
 /**
- * 图片素材快捷覆盖
+ * Quick image overrides
  * ------------------------------------------------------------
- * 这里专门放“你最可能经常换”的图片。
- * - null = 保持 config.js 中的默认素材
- * - '/assets/custom/xxx.gif' = 使用你自己的本地素材
- * - 'https://...' = 使用网络图片
- * - '' = 主动清空该素材（例如 Logo 回退为文字）
+ * Keep frequently replaced artwork here.
+ * - null = keep the default from config.js
+ * - '/assets/custom/xxx.gif' = use a local custom asset
+ * - 'https://...' = use a remote image
+ * - '' = clear an asset intentionally (for example, use the text logo)
  *
- * 修改后保存、刷新即可，不需要重新编译。
+ * Save and refresh after editing; no rebuild is required.
  */
 const overrides = {
-  // 整个 Windows 98 桌面壁纸
+  // Full Windows 98 desktop wallpaper
   desktopBackground: null,
 
-  // Start / IE 窗口图标
+  // Start button and IE window icons
   startLogo: null,
   windowIcon: null,
 
-  // IE 工具栏；默认已经是从历史 Win98/IE 界面截图裁出的本地小图。
+  // IE toolbar. Defaults are local crops from a historical Win98/IE image.
   browserToolbar: {
     back: null,
     forward: null,
@@ -33,15 +33,15 @@ const overrides = {
   },
 
   site: {
-    // 这两个 Logo 推荐 GIF/PNG。设好以后会自动隐藏文字 Logo。
+    // GIF or PNG is recommended. Setting either image hides its text logo.
     mediaHeaderLogo: null,
     chatHeaderLogo: null,
 
-    // 页眉背景：cover
+    // Header backgrounds use cover sizing.
     mediaHeaderBackground: null,
     chatHeaderBackground: null,
 
-    // 网页正文背景：repeat，适合 32/64/128px 的老式平铺图。
+    // Page backgrounds repeat; 32/64/128 px retro tiles work well.
     mediaPageBackground: null,
     chatPageBackground: null,
 

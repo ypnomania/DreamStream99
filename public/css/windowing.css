@@ -6,7 +6,7 @@
 
 :root {
   --ui-scale: 1;
-  --ui-font: "Pixelated MS Sans Serif", "WenQuanYi Bitmap Song 12px", "MS Sans Serif", sans-serif;
+  --ui-font: "Pixelated MS Sans Serif", "MS Sans Serif", sans-serif;
   --display-font: var(--ui-font);
   --ui-font-size: 12px;
 }

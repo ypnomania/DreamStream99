@@ -116,11 +116,11 @@ io.on('connection', (socket) => {
   socket.on('room:join', (payload, ack = () => {}) => {
     try {
       const roomId = String(payload?.roomId || '').toUpperCase();
-      if (!isValidRoomId(roomId)) throw new Error('房间号应为 4–12 位字母或数字');
+      if (!isValidRoomId(roomId)) throw new Error('Room IDs must contain 4-12 letters or numbers');
       const room = rooms.get(roomId);
       const role = authenticateRoomToken(room, payload?.token);
       if (!room || !role || room.expiresAt <= Date.now()) {
-        throw new Error('房间不存在、已过期或邀请令牌无效');
+        throw new Error('The room does not exist, has expired, or the invitation token is invalid');
       }
 
       if (session) {
@@ -150,7 +150,7 @@ io.on('connection', (socket) => {
       if (!session) throw new Error('Not joined');
       const room = rooms.get(session.roomId);
       if (!room) throw new Error('Room expired');
-      if (!canControl(room, session.actor.role)) throw new Error('你没有控制播放的权限');
+      if (!canControl(room, session.actor.role)) throw new Error('You do not have permission to control playback');
 
       const previousRevision = getActionRevision(room, command?.actionId);
       if (previousRevision !== undefined) {
@@ -172,7 +172,7 @@ io.on('connection', (socket) => {
       if (!session) throw new Error('Not joined');
       const room = rooms.get(session.roomId);
       if (!room) throw new Error('Room expired');
-      if (session.actor.role !== 'owner') throw new Error('只有房主可以修改权限');
+      if (session.actor.role !== 'owner') throw new Error('Only the host can change permissions');
       room.permissions = {
         guestControl: Boolean(payload?.guestControl),
         guestChat: Boolean(payload?.guestChat),
@@ -189,7 +189,7 @@ io.on('connection', (socket) => {
     if (!session) return ack({ ok: false, error: 'Not joined' });
     const room = rooms.get(session.roomId);
     if (!room) return ack({ ok: false, error: 'Room expired' });
-    if (!canChat(room, session.actor.role)) return ack({ ok: false, error: '你没有发送聊天的权限' });
+    if (!canChat(room, session.actor.role)) return ack({ ok: false, error: 'You do not have permission to send chat messages' });
     const message = addChat(room, session.actor, payload?.body);
     if (!message) return ack({ ok: false, error: 'Empty message' });
     io.to(room.id).emit('chat:message', message);

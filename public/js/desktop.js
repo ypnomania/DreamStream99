@@ -44,7 +44,7 @@ function writeJson(key, value) {
 
 function installConfiguredFonts() {
   const fonts = config.fonts || {};
-  if (!fonts.latinRegularUrl || !fonts.cjkUrl) return;
+  if (!fonts.latinRegularUrl) return;
   const q = (value) => String(value).replace(/[\\"\n\r]/g, (char) => `\\${char}`);
   const style = document.createElement('style');
   style.id = 'wt-configured-fonts';
@@ -59,20 +59,6 @@ function installConfiguredFonts() {
     @font-face {
       font-family: "Pixelated MS Sans Serif";
       src: url("${q(fonts.latinBoldUrl || fonts.latinRegularUrl)}") format("woff");
-      font-weight: 700;
-      font-style: normal;
-      font-display: block;
-    }
-    @font-face {
-      font-family: "WenQuanYi Bitmap Song 12px";
-      src: url("${q(fonts.cjkUrl)}") format("truetype");
-      font-weight: 400;
-      font-style: normal;
-      font-display: block;
-    }
-    @font-face {
-      font-family: "WenQuanYi Bitmap Song 12px";
-      src: url("${q(fonts.cjkUrl)}") format("truetype");
       font-weight: 700;
       font-style: normal;
       font-display: block;
@@ -240,8 +226,8 @@ function restoreWindow(state) {
   if (state.maximized) {
     state.maximized = false;
     state.element.classList.remove('is-maximized');
-    state.maxButton?.setAttribute('aria-label', '最大化');
-    state.maxButton?.setAttribute('title', '最大化');
+    state.maxButton?.setAttribute('aria-label', 'Maximize');
+    state.maxButton?.setAttribute('title', 'Maximize');
     applyRect(state, state.restoreRect || state.rect);
   }
   setActive(state);
@@ -261,8 +247,8 @@ function maximizeWindow(state, keepRestore = false) {
   if (state.taskButton) state.taskButton.hidden = false;
   const { width, workHeight } = desktopBounds();
   state.element.classList.add('is-maximized');
-  state.maxButton?.setAttribute('aria-label', '还原');
-  state.maxButton?.setAttribute('title', '还原');
+  state.maxButton?.setAttribute('aria-label', 'Restore');
+  state.maxButton?.setAttribute('title', 'Restore');
   applyRect(state, { x: 0, y: 0, width, height: workHeight });
   setActive(state);
 }

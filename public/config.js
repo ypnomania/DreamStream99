@@ -1,42 +1,42 @@
 /**
- * DreamStream 99 - 快速配置
+ * DreamStream 99 - Quick configuration
  * -------------------------
- * 绝大多数会展示给用户看的文案、90 年代网站信息、桌面图标和基础配色都放在这里。
- * 修改后保存并刷新网页即可，无需重新编译。
+ * Most user-facing copy, 1990s website details, desktop icons, and base colors
+ * live here. Save the file and refresh the page; no rebuild is required.
  */
 window.WT_CONFIG = {
   siteName: 'DreamStream 99',
 
   /**
-   * 字体
-   * - 英文 / 拉丁字符：98.css 的 Pixelated MS Sans Serif
-   * - 中文：文泉驿点阵宋体 12px
-   * - UI、正文和标题统一使用本地点阵字体栈
+   * Fonts
+   * - All interface, body, and heading text uses the local Pixelated MS Sans
+   *   Serif files from 98.css.
    *
-   * 字体默认从项目内加载，避免 CDN 不可用时退回系统字体并破坏布局。
-   * 如以后有自己合法可用的网页字体，只改下面 URL 即可。
+   * Fonts load from the project so a CDN outage cannot change the layout.
+   * To use another properly licensed web font later, update these URLs.
    */
   fonts: {
     latinRegularUrl: '/assets/fonts/ms_sans_serif.woff',
     latinBoldUrl: '/assets/fonts/ms_sans_serif_bold.woff',
-    cjkUrl: '/assets/fonts/WenQuanYi-Bitmap-Song-12px.ttf',
   },
 
   theme: {
     desktop: '#008080',
     titleBar: '#000080',
     titleBarActive: '#000080',
-    fontFamily: '"Pixelated MS Sans Serif", "WenQuanYi Bitmap Song 12px", "MS Sans Serif", sans-serif',
-    displayFontFamily: '"Pixelated MS Sans Serif", "WenQuanYi Bitmap Song 12px", "MS Sans Serif", sans-serif',
+    fontFamily: '"Pixelated MS Sans Serif", "MS Sans Serif", sans-serif',
+    displayFontFamily: '"Pixelated MS Sans Serif", "MS Sans Serif", sans-serif',
   },
 
   /**
-   * 4K / 高 DPI：只使用整数倍率缩放整个“虚拟桌面”。
-   * auto：大视口自动 2×，普通屏幕 1×；也可以手动写 1 / 2 / 3。
+   * 4K / HiDPI: scale the entire virtual desktop by integers only.
+   * auto uses 2x on large HiDPI viewports and 1x elsewhere. You can also set
+   * this manually to 1, 2, or 3.
    */
   display: {
     uiScale: 'auto',
-    // auto 会同时看 CSS 视口和物理像素。4K + 150%/200% Windows 缩放也能识别。
+    // Auto checks both the CSS viewport and physical pixels, including 4K
+    // displays with 150% or 200% Windows scaling.
     autoScale2MinViewportWidth: 1500,
     autoScale2MinViewportHeight: 820,
     autoScale2MinPhysicalWidth: 3200,
@@ -46,14 +46,14 @@ window.WT_CONFIG = {
   },
 
   /**
-   * 所有容易替换的图片尽量集中在这里。
-   * 值可以是项目内路径（推荐 /assets/custom/...）或 https:// URL。
-   * 背景留空字符串 = 使用 CSS 默认样式。
+   * Replaceable images are centralized here. Values can be project paths
+   * (prefer /assets/custom/...) or HTTPS URLs. An empty background value uses
+   * the default CSS artwork.
    */
   assets: {
     desktopBackground: '',
 
-    // Windows 98 原始系统图标档案（个人项目使用）。
+    // Archived Windows 98 system icon used by this personal project.
     startLogo: 'https://win98icons.alexmeub.com/icons/png/windows-4.png',
     windowIcon: '/assets/win98/system/ie16.png',
 
@@ -72,7 +72,7 @@ window.WT_CONFIG = {
     },
 
     site: {
-      // 如果 mediaHeaderLogo / chatHeaderLogo 留空，就显示现在的文字 Logo。
+      // Leave either logo empty to keep the current text logo.
       mediaHeaderLogo: '',
       chatHeaderLogo: '',
       mediaHeaderBackground: '',
@@ -102,8 +102,9 @@ window.WT_CONFIG = {
   },
 
   /**
-   * 两个主窗口的初始尺寸只作为首次打开的默认值。
-   * 真正位置会根据当前桌面尺寸按比例计算，并可拖动/缩放；刷新后记忆。
+   * Initial sizes for the two main windows. Their actual positions are
+   * calculated for the current desktop, remain draggable/resizable, and are
+   * remembered across refreshes.
    */
   windows: {
     media: { minWidth: 500, minHeight: 430, widthRatio: 0.62 },
@@ -111,15 +112,15 @@ window.WT_CONFIG = {
   },
 
   desktopIcons: [
-    { id: 'media', label: '我的媒体', icon: 'https://win98icons.alexmeub.com/icons/png/computer_explorer-3.png', fallback: '/assets/retro/computer.png', x: 18, y: 18, openWindow: 'media' },
-    { id: 'chat', label: '聊天室', icon: 'https://win98icons.alexmeub.com/icons/png/outlook_express-0.png', fallback: '/assets/retro/chat.png', x: 18, y: 96, openWindow: 'chat' },
-    { id: 'guestbook', label: '留言簿', icon: '/assets/retro/guestbook.png', x: 18, y: 174 },
-    { id: 'downloads', label: '下载', icon: '/assets/retro/download.png', x: 18, y: 252 },
-    { id: 'links', label: '网络链接', icon: 'https://win98icons.alexmeub.com/icons/png/network_normal_two_pcs-2.png', fallback: '/assets/retro/globe.png', x: 18, y: 330 },
-    { id: 'mail', label: '邮件', icon: 'https://win98icons.alexmeub.com/icons/png/outlook_express-0.png', fallback: '/assets/retro/mail.png', x: 18, y: 408 },
-    { id: 'projects', label: 'Web 项目', icon: 'https://win98icons.alexmeub.com/icons/png/directory_open_file_mydocs_small-4.png', fallback: '/assets/retro/folder.png', x: 18, y: 486 },
-    { id: 'capture', label: '截图工具', icon: 'https://win98icons.alexmeub.com/icons/png/camera-0.png', fallback: '/assets/retro/computer.png', x: 18, y: 564, action: 'capture-stream98' },
-    { id: 'trash', label: '回收站', icon: 'https://win98icons.alexmeub.com/icons/png/recycle_bin_empty-2.png', fallback: '/assets/retro/recycle.png', x: 0, y: 0, anchor: 'bottom-right' },
+    { id: 'media', label: 'My Media', icon: 'https://win98icons.alexmeub.com/icons/png/computer_explorer-3.png', fallback: '/assets/retro/computer.png', x: 18, y: 18, openWindow: 'media' },
+    { id: 'chat', label: 'Chat Room', icon: 'https://win98icons.alexmeub.com/icons/png/outlook_express-0.png', fallback: '/assets/retro/chat.png', x: 18, y: 96, openWindow: 'chat' },
+    { id: 'guestbook', label: 'Guestbook', icon: '/assets/retro/guestbook.png', x: 18, y: 174 },
+    { id: 'downloads', label: 'Downloads', icon: '/assets/retro/download.png', x: 18, y: 252 },
+    { id: 'links', label: 'Web Links', icon: 'https://win98icons.alexmeub.com/icons/png/network_normal_two_pcs-2.png', fallback: '/assets/retro/globe.png', x: 18, y: 330 },
+    { id: 'mail', label: 'Mail', icon: 'https://win98icons.alexmeub.com/icons/png/outlook_express-0.png', fallback: '/assets/retro/mail.png', x: 18, y: 408 },
+    { id: 'projects', label: 'Web Projects', icon: 'https://win98icons.alexmeub.com/icons/png/directory_open_file_mydocs_small-4.png', fallback: '/assets/retro/folder.png', x: 18, y: 486 },
+    { id: 'capture', label: 'Screenshot Tool', icon: 'https://win98icons.alexmeub.com/icons/png/camera-0.png', fallback: '/assets/retro/computer.png', x: 18, y: 564, action: 'capture-stream98' },
+    { id: 'trash', label: 'Recycle Bin', icon: 'https://win98icons.alexmeub.com/icons/png/recycle_bin_empty-2.png', fallback: '/assets/retro/recycle.png', x: 0, y: 0, anchor: 'bottom-right' },
   ],
 
   oldWeb: {
@@ -136,52 +137,52 @@ window.WT_CONFIG = {
   },
 
   copy: {
-    // 两个“浏览器窗口”
+    // The two browser windows
     mediaTitle: 'DreamStream 99 - Watch Together! - Microsoft Internet Explorer',
     chatTitle: 'Dial-Up Lounge - The Chat Spot! - Microsoft Internet Explorer',
-    menuFile: '文件',
-    menuEdit: '编辑',
-    menuView: '查看',
-    menuFavorites: '收藏',
-    menuTools: '工具',
-    menuHelp: '帮助',
-    addressLabel: '地址',
-    go: '转到',
-    links: '链接',
+    menuFile: 'File',
+    menuEdit: 'Edit',
+    menuView: 'View',
+    menuFavorites: 'Favorites',
+    menuTools: 'Tools',
+    menuHelp: 'Help',
+    addressLabel: 'Address',
+    go: 'Go',
+    links: 'Links',
 
-    // 左侧 90 年代视频站
-    mediaNavHome: '首页',
-    mediaNavWatch: '一起看',
-    mediaNavChannels: '频道',
-    mediaNavCommunity: '社区',
-    mediaNavDownloads: '下载',
-    mediaNavTop: '排行榜',
-    mediaNavHelp: '帮助',
-    siteNavigation: '站点导航',
-    navNowPlaying: '正在播放',
-    navWatchRooms: '观影房间',
-    navMovies: '电影',
-    navMusic: '音乐视频',
-    navLive: '直播活动',
-    navFavorites: '我的收藏',
-    navRoomDirectory: '房间目录',
-    navForum: '留言板',
-    navFaq: '帮助与 FAQ',
-    memberLogin: '会员登录',
-    nicknameLabel: '昵称',
-    nicknamePlaceholder: '昵称',
-    fakePassword: '密码',
-    rememberMe: '记住我',
-    fakeLogin: '登录!',
-    fakeJoin: '立即注册（免费!）',
+    // Left-hand 1990s video site
+    mediaNavHome: 'Home',
+    mediaNavWatch: 'Watch Together',
+    mediaNavChannels: 'Channels',
+    mediaNavCommunity: 'Community',
+    mediaNavDownloads: 'Downloads',
+    mediaNavTop: 'Top Charts',
+    mediaNavHelp: 'Help',
+    siteNavigation: 'SITE NAVIGATION',
+    navNowPlaying: 'Now Playing',
+    navWatchRooms: 'Watch Rooms',
+    navMovies: 'Movies',
+    navMusic: 'Music Videos',
+    navLive: 'Live Events',
+    navFavorites: 'My Favorites',
+    navRoomDirectory: 'Room Directory',
+    navForum: 'Message Board',
+    navFaq: 'Help & FAQ',
+    memberLogin: 'MEMBER LOGIN',
+    nicknameLabel: 'Nickname',
+    nicknamePlaceholder: 'Nickname',
+    fakePassword: 'Password',
+    rememberMe: 'Remember me',
+    fakeLogin: 'Log In!',
+    fakeJoin: 'Sign Up Now (FREE!)',
     nowWatching: '★ NOW WATCHING TOGETHER! ★',
-    currentRoom: '当前房间',
-    roomLabel: '房间',
-    watchingNow: '人正在房间中',
-    copyInvite: '邀请朋友!',
-    sourceLabel: '视频地址:',
-    sourcePlaceholder: 'YouTube 视频地址',
-    loadVideo: '打开',
+    currentRoom: 'Current Room',
+    roomLabel: 'Room',
+    watchingNow: 'watching now',
+    copyInvite: 'Invite Friends!',
+    sourceLabel: 'Video URL:',
+    sourcePlaceholder: 'YouTube video URL',
+    loadVideo: 'Load',
     emptyTitle: 'NO VIDEO LOADED',
     emptyText: 'Paste a video URL below.',
     featuredDownload: 'FEATURED DOWNLOAD',
@@ -196,83 +197,83 @@ window.WT_CONFIG = {
     videosStat: 'Videos Watched:',
     upNext: 'UP NEXT IN ROOM QUEUE',
     announcements: 'ANNOUNCEMENTS',
-    statusDone: '完成',
+    statusDone: 'Done',
 
-    // 右侧 90 年代聊天室站
-    chatLobby: '大厅',
-    chatRooms: '房间',
-    chatProfiles: '个人资料',
-    chatSearch: '搜索',
-    chatRules: '规则',
-    chatTopicPrefix: '主题:',
-    chatTopic: '今晚看什么？',
-    membersTitle: '成员',
+    // Right-hand 1990s chat site
+    chatLobby: 'Lobby',
+    chatRooms: 'Rooms',
+    chatProfiles: 'Profiles',
+    chatSearch: 'Search',
+    chatRules: 'Rules',
+    chatTopicPrefix: 'Topic:',
+    chatTopic: 'What should we watch tonight?',
+    membersTitle: 'Members',
     chatWelcome: 'Welcome to Dial-Up Lounge! Be cool & have fun! :-)',
-    chatPlaceholder: '输入消息…',
-    send: '发送',
-    chatEmpty: '*** 房间里还没有消息 ***',
-    youSuffix: '（你）',
-    onlineLegend: '在线',
-    awayLegend: '离开',
-    busyLegend: '忙碌',
-    moreSmileys: '更多 »',
-    changeRoom: '换房间',
-    whosHere: '谁在线?',
-    ignoreList: '忽略列表',
-    myProfile: '我的资料',
+    chatPlaceholder: 'Type a message...',
+    send: 'Send',
+    chatEmpty: '*** No messages in this room yet ***',
+    youSuffix: ' (you)',
+    onlineLegend: 'Online',
+    awayLegend: 'Away',
+    busyLegend: 'Busy',
+    moreSmileys: 'More »',
+    changeRoom: 'Change Room',
+    whosHere: "Who's Here?",
+    ignoreList: 'Ignore List',
+    myProfile: 'My Profile',
     coolLinks: 'COOL LINKS',
 
     // Join / system
-    joinTitle: '连接到观影房间',
-    joinButton: '连接',
-    taskStart: '开始',
-    statusWaiting: '等待连接',
-    statusJoining: '正在连接…',
-    statusJoinFailed: '连接失败',
-    statusOnline: '已连接',
-    statusDemo: '演示模式',
-    statusReconnecting: '重拨中…',
+    joinTitle: 'Connect to Watch Room',
+    joinButton: 'Connect',
+    taskStart: 'Start',
+    statusWaiting: 'Waiting to connect',
+    statusJoining: 'Connecting...',
+    statusJoinFailed: 'Connection failed',
+    statusOnline: 'Connected',
+    statusDemo: 'Demo mode',
+    statusReconnecting: 'Reconnecting...',
     youtubeLabel: 'YouTube',
-    roleOwner: '房主',
-    roleGuest: '访客',
-    ownerSuffix: '［房主］',
-    guestPermissions: '访客权限',
-    allowGuestControl: '允许控制播放',
-    allowGuestChat: '允许发送聊天',
-    retryPlayer: '重试',
-    unmuteAndSync: '📢 点击取消静音并同步',
+    roleOwner: 'Host',
+    roleGuest: 'Guest',
+    ownerSuffix: ' [HOST]',
+    guestPermissions: 'Guest Permissions',
+    allowGuestControl: 'Allow playback control',
+    allowGuestChat: 'Allow chat messages',
+    retryPlayer: 'Retry',
+    unmuteAndSync: 'Unmute & Sync',
 
-    ariaPlay: '播放',
-    ariaPause: '暂停',
-    ariaBack: '后退 10 秒',
-    ariaForward: '前进 10 秒',
-    ariaFullscreen: '全屏',
+    ariaPlay: 'Play',
+    ariaPause: 'Pause',
+    ariaBack: 'Back 10 seconds',
+    ariaForward: 'Forward 10 seconds',
+    ariaFullscreen: 'Fullscreen',
 
-    toastAutoplayMuted: '浏览器阻止了有声自动播放，已静音继续同步。',
-    toastYoutubeError: 'YouTube 播放器错误：{code}',
-    toastJoinFailed: '无法连接到房间。',
-    toastRoomCreateFailed: '创建房间失败，请刷新页面重试。',
-    toastSyncFailed: '播放器同步失败。',
-    toastJoinFirst: '请先连接房间。',
-    toastCommandFailed: '同步失败。',
-    toastNoControl: '房主没有开放播放控制权限。',
-    toastPermissionsFailed: '房间权限更新失败。',
-    toastPasteLink: '请粘贴视频链接。',
-    toastInvalidLink: '无法识别这个链接。',
-    toastYoutubeMissingId: 'YouTube 链接缺少视频 ID。',
-    toastUnsupportedLink: '仅支持 YouTube 视频地址。',
-    toastInvalidTime: '无法识别时间。',
-    toastInviteCopied: '邀请链接已复制。',
-    toastCopyFailed: '复制失败。',
-    toastCaptureNeedVideo: '请先载入视频，再使用截图工具。',
-    toastCapturePickTab: '请在接下来的窗口中选择当前浏览器标签页。',
-    toastCapturePreparing: '正在生成 stream98 截图…',
-    toastCaptureReady: 'stream98 截图已生成并开始下载。',
-    toastCaptureCanceled: '已取消截图。',
-    toastCaptureFailed: '截图失败。请确认选择的是当前标签页。',
-    toastFullscreenFailed: '无法进入全屏。',
-    toastSendFailed: '发送失败。',
-    demoModeButton: '演示模式',
-    toastDemoMode: '当前为 GitHub Pages 演示模式：播放和聊天只保存在本页。',
+    toastAutoplayMuted: 'The browser blocked autoplay with sound. Playback remains synchronized while muted.',
+    toastYoutubeError: 'YouTube player error: {code}',
+    toastJoinFailed: 'Could not connect to the room.',
+    toastRoomCreateFailed: 'Could not create a room. Refresh the page and try again.',
+    toastSyncFailed: 'Player synchronization failed.',
+    toastJoinFirst: 'Connect to the room first.',
+    toastCommandFailed: 'Synchronization failed.',
+    toastNoControl: 'The host has not enabled guest playback control.',
+    toastPermissionsFailed: 'Could not update room permissions.',
+    toastPasteLink: 'Paste a video link first.',
+    toastInvalidLink: 'This link could not be recognized.',
+    toastYoutubeMissingId: 'The YouTube link is missing a video ID.',
+    toastUnsupportedLink: 'Only YouTube video URLs are supported.',
+    toastInvalidTime: 'The time value could not be recognized.',
+    toastInviteCopied: 'Invitation link copied.',
+    toastCopyFailed: 'Could not copy the invitation link.',
+    toastCaptureNeedVideo: 'Load a video before using the screenshot tool.',
+    toastCapturePickTab: 'Choose this browser tab in the window that opens next.',
+    toastCapturePreparing: 'Creating the stream98 screenshot...',
+    toastCaptureReady: 'The stream98 screenshot is ready and downloading.',
+    toastCaptureCanceled: 'Screenshot canceled.',
+    toastCaptureFailed: 'Screenshot failed. Make sure you selected this browser tab.',
+    toastFullscreenFailed: 'Could not enter fullscreen mode.',
+    toastSendFailed: 'Could not send the message.',
+    demoModeButton: 'Demo mode',
+    toastDemoMode: 'GitHub Pages demo mode: playback and chat stay in this browser tab.',
   },
 };

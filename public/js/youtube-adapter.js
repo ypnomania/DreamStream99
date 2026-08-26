@@ -47,16 +47,16 @@ function loadYouTubeApi() {
       script?.remove();
       reject(error);
     };
-    const onError = () => fail(new Error('YouTube IFrame API 加载失败'));
+    const onError = () => fail(new Error('Failed to load the YouTube IFrame API'));
     const onReady = () => {
       if (typeof previousReady === 'function') previousReady();
       if (settled) return;
-      if (!window.YT?.Player) return fail(new Error('YouTube IFrame API 未正确初始化'));
+      if (!window.YT?.Player) return fail(new Error('The YouTube IFrame API did not initialize correctly'));
       settled = true;
       cleanup();
       resolve(window.YT);
     };
-    const timeout = setTimeout(() => fail(new Error('YouTube IFrame API 加载超时')), API_TIMEOUT_MS);
+    const timeout = setTimeout(() => fail(new Error('The YouTube IFrame API timed out while loading')), API_TIMEOUT_MS);
 
     window.onYouTubeIframeAPIReady = onReady;
     if (!script) {
@@ -121,7 +121,7 @@ export class YouTubeAdapter {
         if (error) reject(error);
         else resolve();
       };
-      const timeout = setTimeout(() => finish(new Error('YouTube 播放器初始化超时')), PLAYER_TIMEOUT_MS);
+      const timeout = setTimeout(() => finish(new Error('The YouTube player timed out during initialization')), PLAYER_TIMEOUT_MS);
 
       try {
         this.player = new YT.Player(slot, {

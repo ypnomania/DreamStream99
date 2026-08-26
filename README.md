@@ -1,100 +1,162 @@
 # DreamStream 99
 
-Windows 98 视觉风格的 YouTube 同步观影与实时聊天应用。
+[![Deploy GitHub Pages](https://github.com/ypnomania/DreamStream99/actions/workflows/pages.yml/badge.svg)](https://github.com/ypnomania/DreamStream99/actions/workflows/pages.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-![DreamStream 99 主界面](docs/images/dreamstream-overview.jpg)
+A Windows 98-style YouTube watch-party desktop with a player, chat window, member list, and screenshot tool. The current public version runs as a fully client-side GitHub Pages demo with no persistent server.
 
-## 功能
+[Live demo](https://ypnomania.github.io/DreamStream99/) · [Asset replacement guide](ASSET_GUIDE.md) · [Design and architecture notes](DESIGN_NOTES.md)
 
-- 同步加载、播放、暂停、跳转与倍速状态
-- GitHub Pages 中可直接体验的模拟聊天与在线成员列表
-- 房主 / 访客令牌及独立的播放、聊天权限
-- 可拖动、缩放、最小化和最大化的桌面窗口
-- 清晰的系统 UI 字体、复古展示字体、可替换素材与高 DPI 整数倍缩放
-- GitHub Pages 静态演示模式
+![DreamStream 99 main interface](docs/images/dreamstream-overview.jpg)
 
-## Serverless 架构
+## Current status
 
-- GitHub Pages：Win98 UI、YouTube 播放器与截图工具
-- Cloudflare Worker（下一阶段）：创建房间、Token 校验与 WebSocket Upgrade
-- Durable Object（下一阶段）：每个房间的播放状态、成员、聊天与广播
-- 原生 HTML、CSS、JavaScript；构建与测试使用 Node.js
+| Component | Status | Details |
+| --- | --- | --- |
+| GitHub Pages demo | Live | The UI, YouTube playback, screenshots, simulated members, and simulated chat all run in the browser |
+| `RoomClient` abstraction | Complete | The UI does not depend directly on a specific room transport |
+| Worker WebSocket client | Complete | `WebSocketRoomClient` defines requests, broadcasts, and reconnection behavior |
+| Cloudflare Worker | Planned | Will create rooms, validate tokens, and upgrade WebSocket connections |
+| Durable Object | Planned | One object per room will store playback, members, permissions, and chat state |
+| Node / Socket.IO prototype | Reference only | It is not deployed to GitHub Pages or connected to the current `RoomClient` |
 
-线上演示：<https://bothervast.github.io/DreamStream99/>
+## Features
 
-不需要常驻 Node 服务、Redis、传统数据库或运维 VPS。仓库中的 Express / Socket.IO 服务仅作为已有同步原型保留，不是 Pages 部署依赖。
+- Windows 98 desktop, taskbar, and Internet Explorer-style windows
+- Window dragging, eight-direction resizing, minimize, maximize, close, and saved layouts
+- YouTube URL parsing, play, pause, seek, playback speed, and a custom paused view
+- Player and chat screenshot tool
+- Simulated members, chat, and playback state available directly on GitHub Pages
+- Replaceable logos, backgrounds, icons, colors, and copy
+- Local Pixelated MS Sans Serif bitmap font and integer HiDPI scaling
 
-## 快速开始
+> Demo playback, members, and chat exist only in the current page. They do not synchronize across browsers or devices.
 
-需要 Node.js 20 或更高版本。
+## Serverless architecture
+
+```text
+GitHub Pages
+└── Win98 UI / YouTube / Screenshot
+    ├── DemoRoomClient                 Current live demo
+    └── WebSocketRoomClient
+        └── Cloudflare Worker          Planned
+            └── Durable Object         One object per room
+```
+
+The production architecture does not require a persistent Node server, Redis, a traditional database, or a managed VPS. A Durable Object will provide strongly consistent room state and WebSocket broadcasts, while WebSocket Hibernation can reduce resource use for idle rooms.
+
+## Run locally
+
+Node.js 20 or newer is required.
 
 ```bash
 npm ci
 npm start
 ```
 
-打开 <http://localhost:3000>。页面会自动创建房间；输入昵称连接后，即可载入 YouTube 链接并通过“邀请朋友”复制访客链接。
+Open <http://localhost:3000>. The local page still uses `demo` mode by default. The Express / Socket.IO code in this repository is an earlier synchronization prototype, not the production Serverless backend.
 
-开发模式：
+Restart the server automatically during development:
 
 ```bash
 npm run dev
 ```
 
-使用其他端口：
+Generate the same static output deployed to GitHub Pages:
 
 ```bash
-PORT=3001 npm start
+npm run build
 ```
 
-## 配置
+The build is written to `dist/`. The build script rewrites root-relative asset paths for the repository subpath and forces the output to use `demo` mode.
 
-| 文件 | 用途 |
+## Runtime modes
+
+Runtime configuration lives in [`public/runtime-config.js`](public/runtime-config.js).
+
+```js
+window.WT_RUNTIME = {
+  mode: 'demo',
+  websocketUrl: null,
+  apiUrl: null,
+};
+```
+
+| `mode` | Client | Purpose |
+| --- | --- | --- |
+| `demo` | `DemoRoomClient` | GitHub Pages presentation and local UI development |
+| `websocket` | `WebSocketRoomClient` | Connection to the future Cloudflare Worker |
+
+After the Worker backend is complete, configure it as follows:
+
+```js
+window.WT_RUNTIME = {
+  mode: 'websocket',
+  websocketUrl: 'wss://example.workers.dev/ws',
+  apiUrl: 'https://example.workers.dev/api/rooms',
+};
+```
+
+The main `RoomClient` methods are `join()`, `sendPlayback()`, `sendChat()`, `updatePermissions()`, and `ping()`. Subscribe to state with `onSnapshot()`, `onPresence()`, `onPlayback()`, `onChat()`, `onPermissions()`, and `onConnection()`.
+
+## Configuration and assets
+
+| File | Purpose |
 | --- | --- |
-| [`public/config.js`](public/config.js) | 文案、主题、窗口、桌面图标与默认素材 |
-| [`public/assets-config.js`](public/assets-config.js) | 快速覆盖 Logo、背景和图标 |
-| [`public/runtime-config.js`](public/runtime-config.js) | 后端地址与运行模式 |
-| [`ASSET_GUIDE.md`](ASSET_GUIDE.md) | 自定义素材说明 |
+| [`public/config.js`](public/config.js) | Copy, theme, windows, desktop icons, and default assets |
+| [`public/assets-config.js`](public/assets-config.js) | Logo, background, and icon overrides without editing the main configuration |
+| [`public/runtime-config.js`](public/runtime-config.js) | Demo or WebSocket runtime selection |
+| [`ASSET_GUIDE.md`](ASSET_GUIDE.md) | Custom images, scaling, and layout reset instructions |
+| [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) | Sources and licenses for fonts, icons, and reference artwork |
 
-自定义图片建议放在 `public/assets/custom/`。如需清除浏览器中保存的窗口和图标位置，可访问：
+Place custom images in `public/assets/custom/`. To reset saved window and desktop icon positions, visit:
 
 ```text
 http://localhost:3000/?resetLayout=1
 ```
 
-UI 通过 `RoomClient` 与房间传输解耦：`DemoRoomClient` 用于 Pages 静态展示，`WebSocketRoomClient` 预留给 Worker + Durable Object。核心接口包括 `join()`、`sendPlayback()`、`sendChat()` 和 `onSnapshot()`。
+All interface and body text uses the locally hosted Pixelated MS Sans Serif bitmap font. See the bundled license and third-party notices for attribution.
 
-### 字体
+## Project structure
 
-功能性 UI 与正文使用 13px 系统字体栈，确保普通 1× 屏幕上的中英文清晰可读。Pixelated MS Sans Serif、可选的“方正像素12”和文泉驿点阵宋体只用于 Logo、大标题等复古展示文字。
-
-项目不分发方正字体文件。如已取得相应的 Web 嵌入授权，可把字体放入 `public/assets/fonts/`，再设置 `public/config.js`：
-
-```js
-fonts: {
-  preferredCjkUrl: '/assets/fonts/your-licensed-fz-pixel-12.ttf',
-}
+```text
+public/                 Static UI and browser-side logic
+  js/room-client.js     Demo and WebSocket room clients
+server/                 Earlier Node / Socket.IO synchronization prototype
+scripts/build-pages.js  GitHub Pages static build script
+tests/                  Node.js tests
+.github/workflows/      Automated verification and Pages deployment
 ```
 
-页面与静态资源统一使用 UTF-8；多级中文回退用于避免缺字方框和编码乱码。
+## Commands
 
-## 可用命令
-
-| 命令 | 说明 |
+| Command | Description |
 | --- | --- |
-| `npm start` | 启动应用服务 |
-| `npm run dev` | 监听文件变化并自动重启 |
-| `npm run build` | 生成 `dist/` 静态站点 |
-| `npm test` | 运行测试 |
-| `npm run check` | 检查 JavaScript 语法 |
-| `npm run verify` | 运行语法检查与测试 |
+| `npm start` | Start the local Express static server and prototype API |
+| `npm run dev` | Restart automatically when server files change |
+| `npm run build` | Generate the `dist/` GitHub Pages site |
+| `npm test` | Run all tests |
+| `npm run check` | Check JavaScript syntax |
+| `npm run verify` | Run syntax checks and tests |
 
-## 部署说明
+## Automatic deployment
 
-`npm run build` 生成完全静态的 GitHub Pages 演示版，不提供跨设备同步；推送到 `main` 后，仓库内的 GitHub Actions 工作流会自动校验、构建并部署 `dist/`。构建过程会自动把资源路径改写为适用于项目子路径的相对 URL，并强制使用 `demo` 运行模式。
+After a push to `main`, [`pages.yml`](.github/workflows/pages.yml) performs these steps:
 
-本地保留的 Node 同步原型仍可用于联调；正式多人同步将由 Cloudflare Worker + Durable Object 接管。
+1. Install locked dependencies.
+2. Run `npm run verify`.
+3. Run `npm run build`.
+4. Upload `dist/` and deploy it to GitHub Pages.
 
-## 许可
+The workflow can also be started manually with `workflow_dispatch` from GitHub Actions.
 
-项目代码采用 [MIT License](LICENSE)。字体与图像素材的来源及许可见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+## Documentation
+
+- [Design and architecture notes](DESIGN_NOTES.md)
+- [Asset replacement guide](ASSET_GUIDE.md)
+- [Third-party notices](THIRD_PARTY_NOTICES.md)
+- [Font notes](public/assets/fonts/README.md)
+
+## License
+
+Project code is available under the [MIT License](LICENSE). Third-party fonts, icons, and image assets may use different terms; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

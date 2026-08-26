@@ -3,7 +3,7 @@
   "version": "0.5.0",
   "private": true,
   "type": "module",
-  "description": "DreamStream is a synchronized YouTube watch party with a draggable, resizable Windows 98 desktop, retro websites, bitmap-style fonts, and HiDPI integer scaling.",
+  "description": "A Windows 98-style YouTube watch-party UI with a GitHub Pages demo and a Serverless RoomClient architecture.",
   "scripts": {
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",

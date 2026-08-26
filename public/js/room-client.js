@@ -73,9 +73,9 @@ export class DemoRoomClient extends RoomClient {
         { clientId: 'demo-cybermia', nickname: 'CyberMia', role: 'guest' },
       ],
       messages: [
-        { id: 'demo-1', clientId: 'demo-pixelcat', nickname: 'PixelCat', body: '欢迎来到 DreamStream 99！', serverTime: now - 150000 },
-        { id: 'demo-2', clientId: 'demo-cybermia', nickname: 'CyberMia', body: '粘贴一个 YouTube 地址就能开始播放 ✨', serverTime: now - 90000 },
-        { id: 'demo-3', clientId: 'demo-pixelcat', nickname: 'PixelCat', body: '这里是 GitHub Pages 演示模式，不需要后端。', serverTime: now - 30000 },
+        { id: 'demo-1', clientId: 'demo-pixelcat', nickname: 'PixelCat', body: 'Welcome to DreamStream 99!', serverTime: now - 150000 },
+        { id: 'demo-2', clientId: 'demo-cybermia', nickname: 'CyberMia', body: 'Paste a YouTube URL to start watching.', serverTime: now - 90000 },
+        { id: 'demo-3', clientId: 'demo-pixelcat', nickname: 'PixelCat', body: 'This is the GitHub Pages demo; no backend is required.', serverTime: now - 30000 },
       ],
     };
   }
