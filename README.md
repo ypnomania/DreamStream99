@@ -7,7 +7,7 @@ A Windows 98-style YouTube watch-party desktop with a player, chat window, membe
 
 [Live demo](https://ypnomania.github.io/DreamStream99/) · [Asset replacement guide](ASSET_GUIDE.md) · [Design and architecture notes](DESIGN_NOTES.md)
 
-![DreamStream 99 main interface](docs/images/dreamstream-overview.jpg)
+![DreamStream 99 main interface](docs/images/dreamstream-overview.png)
 
 ## Current status
 
