@@ -295,7 +295,7 @@ class YtDlpSettings:
 
 @dataclass(frozen=True, slots=True)
 class RelayRefreshSettings:
-    timeout_seconds: float = 30.0
+    timeout_seconds: float = 50.0
     failure_cooldown_seconds: float = 5.0
     max_concurrent_refreshes: int = 4
 
@@ -309,7 +309,7 @@ class RelayRefreshSettings:
             timeout_seconds=_positive_float(
                 source,
                 "RELAY_REFRESH_TIMEOUT_SECONDS",
-                30.0,
+                50.0,
             ),
             failure_cooldown_seconds=_positive_float(
                 source,
@@ -320,6 +320,49 @@ class RelayRefreshSettings:
                 source,
                 "RELAY_MAX_CONCURRENT_REFRESHES",
                 4,
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class MediaResolutionSettings:
+    cache_ttl_seconds: float = 300.0
+    max_cache_entries: int = 128
+    max_concurrent_resolutions: int = 1
+    max_pending_resolutions: int = 8
+    timeout_seconds: float = 45.0
+
+    @classmethod
+    def from_env(
+        cls,
+        environ: Mapping[str, str] | None = None,
+    ) -> "MediaResolutionSettings":
+        source = os.environ if environ is None else environ
+        return cls(
+            cache_ttl_seconds=_positive_float(
+                source,
+                "MEDIA_RESOLVE_CACHE_TTL_SECONDS",
+                300.0,
+            ),
+            max_cache_entries=_positive_int(
+                source,
+                "MEDIA_RESOLVE_MAX_CACHE_ENTRIES",
+                128,
+            ),
+            max_concurrent_resolutions=_positive_int(
+                source,
+                "MEDIA_RESOLVE_MAX_CONCURRENT",
+                1,
+            ),
+            max_pending_resolutions=_positive_int(
+                source,
+                "MEDIA_RESOLVE_MAX_PENDING",
+                8,
+            ),
+            timeout_seconds=_positive_float(
+                source,
+                "MEDIA_RESOLVE_TIMEOUT_SECONDS",
+                45.0,
             ),
         )
 

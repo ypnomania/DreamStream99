@@ -9,10 +9,18 @@ from time import perf_counter
 from unittest.mock import patch
 
 import pytest
+import anyio
 from fastapi.testclient import TestClient
 from yt_dlp.utils import DownloadError
 
-from media_service.main import MEDIA_ALLOWED_ORIGIN, app
+import media_service.main as main_module
+from media_service.main import (
+    MEDIA_ALLOWED_ORIGIN,
+    app,
+    get_media_resolution_coordinator,
+    get_media_resolver_executor,
+)
+from media_service.resolution import ResolutionCapacityError, ResolutionTimeoutError
 
 
 MEDIA_GRANT_SECRET = "test-media-grant-secret-kept-separate-and-long"
@@ -21,12 +29,17 @@ TEST_URL = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 client = TestClient(app, headers={"Origin": MEDIA_ALLOWED_ORIGIN})
 
 
+class _InlineResolverExecutor:
+    async def resolve(self, source_url: str):
+        return await anyio.to_thread.run_sync(
+            main_module.resolve_youtube,
+            source_url,
+        )
+
+
 @pytest.fixture(autouse=True)
 def clean_service_state(monkeypatch):
-    app.state.relay_sessions.clear()
-    app.state.media_grant_secret = MEDIA_GRANT_SECRET.encode("utf-8")
     monkeypatch.setenv("MEDIA_GRANT_SECRET", MEDIA_GRANT_SECRET)
-    client.headers["Authorization"] = f"Bearer {_media_grant()}"
     for name in (
         "YTDLP_COOKIEFILE",
         "YTDLP_COOKIEFILE_SOURCE",
@@ -35,10 +48,21 @@ def clean_service_state(monkeypatch):
         "YTDLP_PO_TOKEN_PROVIDER",
         "YTDLP_PROXY",
         "YTDLP_SOCKET_TIMEOUT",
+        "MEDIA_RESOLVE_CACHE_TTL_SECONDS",
+        "MEDIA_RESOLVE_MAX_CACHE_ENTRIES",
+        "MEDIA_RESOLVE_MAX_CONCURRENT",
+        "MEDIA_RESOLVE_MAX_PENDING",
+        "MEDIA_RESOLVE_TIMEOUT_SECONDS",
     ):
         monkeypatch.delenv(name, raising=False)
-    yield
-    app.state.relay_sessions.clear()
+    with client:
+        app.state.relay_sessions.clear()
+        client.headers["Authorization"] = f"Bearer {_media_grant()}"
+        app.dependency_overrides[get_media_resolver_executor] = (
+            lambda: _InlineResolverExecutor()
+        )
+        yield
+        app.state.relay_sessions.clear()
     app.dependency_overrides.clear()
 
 
@@ -248,6 +272,74 @@ def test_contract_is_exact_and_upstream_state_stays_internal(record_property):
     assert options["noplaylist"] is True
 
 
+def test_success_cache_reuses_resolution_but_mints_fresh_relay_sessions():
+    first_upstream = "https://rr1---sn-test.googlevideo.com/cached?sig=first"
+    with patch("media_service.resolver.YoutubeDL") as ydl_class:
+        ydl = ydl_class.return_value.__enter__.return_value
+        ydl.extract_info.return_value = _info(
+            formats=[_format("18", url=first_upstream)]
+        )
+
+        first = client.post("/resolve", json={"media": TEST_MEDIA})
+        cached = client.post("/resolve", json={"media": TEST_MEDIA})
+        first_session = first.json()["streams"][0]["session"]
+        cached_session = cached.json()["streams"][0]["session"]
+        assert ydl.extract_info.call_count == 1
+        assert app.state.relay_sessions.get(first_session).upstream_url == first_upstream
+        assert app.state.relay_sessions.get(cached_session).upstream_url == first_upstream
+
+    assert first.status_code == cached.status_code == 200
+    assert ydl.extract_info.call_count == 1
+    sessions = [first_session, cached_session]
+    assert len(set(sessions)) == 2
+    assert all(
+        app.state.relay_sessions.get(session).upstream_url == first_upstream
+        for session in sessions
+    )
+
+
+def test_resolution_deadline_has_a_safe_504_contract():
+    class TimedOutCoordinator:
+        async def run(self, _key, _operation, *, force=False):
+            assert force is False
+            raise ResolutionTimeoutError("internal timeout")
+
+    app.dependency_overrides[get_media_resolution_coordinator] = (
+        lambda: TimedOutCoordinator()
+    )
+    response = client.post("/resolve", json={"media": TEST_MEDIA})
+
+    assert response.status_code == 504
+    assert response.json() == {
+        "detail": {
+            "code": "resolve_timeout",
+            "message": "Media resolution timed out",
+        }
+    }
+
+
+def test_resolution_queue_overflow_has_a_safe_retryable_contract():
+    class BusyCoordinator:
+        async def run(self, _key, _operation, *, force=False):
+            assert force is False
+            raise ResolutionCapacityError("internal queue detail")
+
+    app.dependency_overrides[get_media_resolution_coordinator] = (
+        lambda: BusyCoordinator()
+    )
+    response = client.post("/resolve", json={"media": TEST_MEDIA})
+
+    assert response.status_code == 503
+    assert response.headers["retry-after"] == "5"
+    assert response.json() == {
+        "detail": {
+            "code": "resolve_busy",
+            "message": "Media resolver is busy; try again shortly",
+        }
+    }
+    assert "internal queue detail" not in response.text
+
+
 def test_hls_and_dash_only_media_returns_no_stream_capabilities(record_property):
     response, _ = _post_with_result(
         _info(
@@ -440,6 +532,8 @@ def test_unavailable_format_is_not_misclassified_as_authentication(
         {"media": {"provider": "youtube", "id": "too-short"}},
         {"media": TEST_MEDIA, "unexpected": True},
         {"media": {**TEST_MEDIA, "unexpected": True}},
+        {"media": TEST_MEDIA, "force_refresh": True},
+        {"media": TEST_MEDIA, "force_refresh": "true"},
     ],
 )
 def test_request_validation_rejects_invalid_payloads(payload):

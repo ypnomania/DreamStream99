@@ -4,10 +4,8 @@ from http.cookiejar import CookieJar, DefaultCookiePolicy
 from typing import Any
 from urllib.parse import urlencode
 
-import anyio
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
-from starlette.concurrency import run_in_threadpool
 from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
 
@@ -16,6 +14,7 @@ from media_service.config import (
     MediaEgressProxySettings,
     MediaGrantSettings,
     MediaOriginSettings,
+    MediaResolutionSettings,
     RelayRefreshSettings,
     YtDlpSettings,
 )
@@ -37,7 +36,14 @@ from media_service.relay import (
     validated_relay_headers,
     validated_unsatisfied_range_headers,
 )
-from media_service.resolver import MediaResolveError, resolve_youtube
+from media_service.resolution import (
+    ResolutionCapacityError,
+    ResolutionCoordinator,
+    ResolutionCoordinatorClosedError,
+    ResolutionExecutor,
+    ResolutionTimeoutError,
+)
+from media_service.resolver import MediaResolveError, ResolvedMedia, resolve_youtube
 from media_service.schemas import (
     MediaIdentity,
     MediaMetadata,
@@ -97,6 +103,7 @@ async def lifespan(application: FastAPI):
     try:
         grant_settings = MediaGrantSettings.from_env()
         refresh_settings = RelayRefreshSettings.from_env()
+        resolution_settings = MediaResolutionSettings.from_env()
         # Validate the player-client/provider grammar before advertising
         # readiness. The per-request resolver rebuilds the options so runtime
         # cookie staging remains visible without retaining secret values here.
@@ -110,13 +117,31 @@ async def lifespan(application: FastAPI):
             timeout_seconds=refresh_settings.timeout_seconds,
             failure_cooldown_seconds=refresh_settings.failure_cooldown_seconds,
         )
+        resolution_coordinator = ResolutionCoordinator[
+            tuple[str, str], ResolvedMedia
+        ](
+            cache_ttl_seconds=resolution_settings.cache_ttl_seconds,
+            max_cache_entries=resolution_settings.max_cache_entries,
+            max_concurrent_resolutions=(
+                resolution_settings.max_concurrent_resolutions
+            ),
+            max_pending_resolutions=resolution_settings.max_pending_resolutions,
+            timeout_seconds=resolution_settings.timeout_seconds,
+        )
+        resolver_executor = ResolutionExecutor(
+            max_workers=resolution_settings.max_concurrent_resolutions,
+        )
         application.state.relay_http_client = relay_http_client
         application.state.relay_refresh_coordinator = refresh_coordinator
+        application.state.media_resolution_coordinator = resolution_coordinator
+        application.state.media_resolver_executor = resolver_executor
         application.state.media_grant_secret = grant_settings.secret.encode("utf-8")
         try:
             yield
         finally:
             await refresh_coordinator.aclose()
+            await resolution_coordinator.aclose()
+            await resolver_executor.aclose()
 
 
 app = FastAPI(
@@ -195,6 +220,28 @@ def get_relay_refresh_coordinator(request: Request) -> RelayRefreshCoordinator:
     return coordinator
 
 
+def get_media_resolution_coordinator(
+    request: Request,
+) -> ResolutionCoordinator[tuple[str, str], ResolvedMedia]:
+    coordinator = getattr(request.app.state, "media_resolution_coordinator", None)
+    if not isinstance(coordinator, ResolutionCoordinator):
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "media_unavailable", "message": "Media is unavailable"},
+        )
+    return coordinator
+
+
+def get_media_resolver_executor(request: Request) -> ResolutionExecutor:
+    executor = getattr(request.app.state, "media_resolver_executor", None)
+    if not isinstance(executor, ResolutionExecutor):
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "media_unavailable", "message": "Media is unavailable"},
+        )
+    return executor
+
+
 def get_media_grant_secret(request: Request) -> bytes:
     secret = getattr(request.app.state, "media_grant_secret", None)
     if not isinstance(secret, bytes):
@@ -217,6 +264,13 @@ def _canonical_youtube_url(media_id: str) -> str:
     return f"https://www.youtube.com/watch?{urlencode({'v': media_id})}"
 
 
+async def _resolve_with_executor(
+    executor: ResolutionExecutor,
+    source_url: str,
+) -> ResolvedMedia:
+    return await executor.resolve(source_url)
+
+
 async def _open_upstream(
     relay_http_client: httpx.AsyncClient,
     target: RelayTarget,
@@ -235,7 +289,9 @@ async def _open_upstream(
 async def _refresh_relay_target(
     failed_target: RelayTarget,
     sessions: RelaySessionStore,
-    coordinator: RelayRefreshCoordinator,
+    refresh_coordinator: RelayRefreshCoordinator,
+    resolution_coordinator: ResolutionCoordinator[tuple[str, str], ResolvedMedia],
+    resolver_executor: ResolutionExecutor,
 ) -> RelayTarget:
     key = failed_target.cache_key
     if key is None or failed_target.source_url is None:
@@ -251,10 +307,10 @@ async def _refresh_relay_target(
         expected = current
         source_url = _canonical_youtube_url(key.media_id)
         try:
-            result = await anyio.to_thread.run_sync(
-                resolve_youtube,
-                source_url,
-                abandon_on_cancel=True,
+            result = await resolution_coordinator.run(
+                ("youtube", key.media_id),
+                lambda: _resolve_with_executor(resolver_executor, source_url),
+                force=True,
             )
         except Exception as exc:
             if expected is not None:
@@ -286,7 +342,7 @@ async def _refresh_relay_target(
         return published or refreshed_target
 
     try:
-        return await coordinator.run(
+        return await refresh_coordinator.run(
             (key, failed_target.revision),
             refresh_once,
         )
@@ -304,6 +360,8 @@ async def _open_upstream_with_refresh(
     requested_range: ByteRange,
     sessions: RelaySessionStore,
     refresh_coordinator: RelayRefreshCoordinator,
+    resolution_coordinator: ResolutionCoordinator[tuple[str, str], ResolvedMedia],
+    resolver_executor: ResolutionExecutor,
 ) -> tuple[httpx.Response, RelayTarget]:
     """Open an upstream response and refresh once after an origin 403."""
 
@@ -321,6 +379,8 @@ async def _open_upstream_with_refresh(
                 target,
                 sessions,
                 refresh_coordinator,
+                resolution_coordinator,
+                resolver_executor,
             )
             upstream = await _open_upstream(
                 relay_http_client,
@@ -369,6 +429,10 @@ async def resolve(
     response: Response,
     sessions: RelaySessionStore = Depends(get_relay_sessions),
     grant_secret: bytes = Depends(get_media_grant_secret),
+    resolution_coordinator: ResolutionCoordinator[
+        tuple[str, str], ResolvedMedia
+    ] = Depends(get_media_resolution_coordinator),
+    resolver_executor: ResolutionExecutor = Depends(get_media_resolver_executor),
 ) -> ResolveResponse:
     requested_media = MediaGrantMedia(
         provider=payload.media.provider,
@@ -396,13 +460,41 @@ async def resolve(
 
     source_url = _canonical_youtube_url(payload.media.id)
     try:
-        result = await run_in_threadpool(resolve_youtube, source_url)
+        result = await resolution_coordinator.run(
+            (payload.media.provider, payload.media.id),
+            lambda: _resolve_with_executor(resolver_executor, source_url),
+        )
     except MediaResolveError as exc:
         raise HTTPException(
             status_code=exc.status_code,
             detail={
                 "code": exc.code,
                 "message": exc.public_message,
+            },
+        ) from exc
+    except ResolutionTimeoutError as exc:
+        raise HTTPException(
+            status_code=504,
+            detail={
+                "code": "resolve_timeout",
+                "message": "Media resolution timed out",
+            },
+        ) from exc
+    except ResolutionCapacityError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "resolve_busy",
+                "message": "Media resolver is busy; try again shortly",
+            },
+            headers={"Retry-After": "5"},
+        ) from exc
+    except ResolutionCoordinatorClosedError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "media_unavailable",
+                "message": "Media is unavailable",
             },
         ) from exc
     if result.provider != "youtube" or result.media_id != payload.media.id:
@@ -464,6 +556,10 @@ async def relay(
     refresh_coordinator: RelayRefreshCoordinator = Depends(
         get_relay_refresh_coordinator
     ),
+    resolution_coordinator: ResolutionCoordinator[
+        tuple[str, str], ResolvedMedia
+    ] = Depends(get_media_resolution_coordinator),
+    resolver_executor: ResolutionExecutor = Depends(get_media_resolver_executor),
 ) -> Response:
     target = sessions.get(session)
     if target is None:
@@ -496,6 +592,8 @@ async def relay(
         requested_range,
         sessions,
         refresh_coordinator,
+        resolution_coordinator,
+        resolver_executor,
     )
 
     if upstream.status_code == 416:
@@ -540,6 +638,10 @@ async def relay_head(
     refresh_coordinator: RelayRefreshCoordinator = Depends(
         get_relay_refresh_coordinator
     ),
+    resolution_coordinator: ResolutionCoordinator[
+        tuple[str, str], ResolvedMedia
+    ] = Depends(get_media_resolution_coordinator),
+    resolver_executor: ResolutionExecutor = Depends(get_media_resolver_executor),
 ) -> Response:
     """Return representation metadata using a validated one-byte range probe."""
 
@@ -562,6 +664,8 @@ async def relay_head(
         probe_range,
         sessions,
         refresh_coordinator,
+        resolution_coordinator,
+        resolver_executor,
     )
     if upstream.status_code != 206:
         await close_upstream(upstream)

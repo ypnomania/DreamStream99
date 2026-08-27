@@ -33,6 +33,11 @@ Capabilities live in a bounded in-memory store (2,048 entries, 15-minute sliding
 idle TTL). Missing/expired capabilities return `relay_session_not_found`; after
 expiry or restart the browser must obtain a fresh grant and resolve again.
 
+Initial resolutions use keyed singleflight plus a bounded five-minute success
+cache. Every cache miss runs in a one-shot subprocess, allowing the configured
+deadline or service shutdown to terminate yt-dlp without an orphaned thread.
+Each authorized request still mints fresh opaque relay capabilities.
+
 On upstream 403, same-revision requests share one bounded refresh. The exact
 format is reselected, CAS prevents a slow refresh overwriting a newer resolve,
 and the original Range is retried once. Responses are always closed. Refresh
@@ -102,9 +107,10 @@ through yt-dlp's `js_runtimes` option; runtime EJS downloads are not enabled.
 `yt-dlp` is pinned to 2026.08.19, whose default dependency group pins
 `yt-dlp-ejs` 0.8.0. The generic default is yt-dlp's special `default` preset,
 which selects its authenticated client combination when cookies are present.
-The production Hong Kong VLESS profile explicitly uses the real `mweb` client;
-acceptance requires progressive streams and a public `206` Range response for
-the affected Topic/Release probes. The special preset is
+The production Hong Kong VLESS profile explicitly uses the real `web_embedded`
+client after cold-resolve comparisons through that exit; acceptance requires
+progressive streams and a public `206` Range response for representative probes.
+The special preset is
 intentionally not an `INNERTUBE_CLIENTS` key; every concrete
 override is checked against that registry and must support cookies. Explicit
 `tv` did not pass this deployment's production acceptance and is only an opt-in

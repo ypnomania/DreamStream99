@@ -4,6 +4,8 @@ const PAUSED_DRIFT_THRESHOLD_SECONDS = 0.35;
 const PLAYING_DRIFT_THRESHOLD_SECONDS = 1.25;
 const RATE_EPSILON = 0.001;
 const EVENT_SUPPRESSION_TIMEOUT_MS = 1000;
+const MEDIA_READY_TIMEOUT_MS = 20_000;
+const PLAY_START_TIMEOUT_MS = 8_000;
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -17,7 +19,10 @@ function delay(ms) {
  * be persisted as part of MediaRef.
  */
 export class NativeMediaAdapter extends PlayerAdapter {
-  constructor(hostElement, callbacks = {}) {
+  constructor(hostElement, callbacks = {}, {
+    mediaReadyTimeoutMs = MEDIA_READY_TIMEOUT_MS,
+    playStartTimeoutMs = PLAY_START_TIMEOUT_MS,
+  } = {}) {
     super(hostElement, callbacks);
     this.video = null;
     this.ready = false;
@@ -33,6 +38,13 @@ export class NativeMediaAdapter extends PlayerAdapter {
     this.presentationState = 'idle';
     this.videoEventHandlers = null;
     this.suppressedMediaEvents = new Map();
+    this.mediaReadyWaiter = null;
+    this.mediaReadyTimeoutMs = Number.isFinite(mediaReadyTimeoutMs) && mediaReadyTimeoutMs > 0
+      ? mediaReadyTimeoutMs
+      : MEDIA_READY_TIMEOUT_MS;
+    this.playStartTimeoutMs = Number.isFinite(playStartTimeoutMs) && playStartTimeoutMs > 0
+      ? playStartTimeoutMs
+      : PLAY_START_TIMEOUT_MS;
   }
 
   ensureVideo() {
@@ -119,8 +131,67 @@ export class NativeMediaAdapter extends PlayerAdapter {
   }
 
   handleError(event) {
+    if (this.mediaReadyWaiter?.video === this.video) return;
     const code = this.video?.error?.code;
     this.callbacks.onError?.(Number.isFinite(code) ? code : event);
+  }
+
+  cancelMediaReadyWaiter() {
+    const waiter = this.mediaReadyWaiter;
+    if (!waiter) return;
+    this.mediaReadyWaiter = null;
+    waiter.cleanup();
+    waiter.resolve(false);
+  }
+
+  waitForMediaReady(video, generation) {
+    if (Number(video?.readyState) >= 2) return Promise.resolve(true);
+    this.cancelMediaReadyWaiter();
+
+    let waiter;
+    const promise = new Promise((resolve, reject) => {
+      let settled = false;
+      let timeout = null;
+      const cleanup = () => {
+        video.removeEventListener('loadeddata', onReady);
+        video.removeEventListener('canplay', onReady);
+        video.removeEventListener('error', onError);
+        clearTimeout(timeout);
+        if (this.mediaReadyWaiter === waiter) this.mediaReadyWaiter = null;
+      };
+      const settle = (callback, value) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        callback(value);
+      };
+      const onReady = () => settle(resolve, true);
+      const onError = () => {
+        const mediaCode = video?.error?.code;
+        const error = new Error('The media stream could not load its first frame');
+        if (Number.isFinite(mediaCode)) error.code = mediaCode;
+        settle(reject, error);
+      };
+      waiter = {
+        video,
+        generation,
+        cleanup,
+        promise: null,
+        resolve: (value) => settle(resolve, value),
+      };
+      this.mediaReadyWaiter = waiter;
+      video.addEventListener('loadeddata', onReady);
+      video.addEventListener('canplay', onReady);
+      video.addEventListener('error', onError);
+      timeout = setTimeout(() => {
+        const error = new Error('Timed out while buffering the first video frame');
+        error.code = 'media_ready_timeout';
+        settle(reject, error);
+      }, this.mediaReadyTimeoutMs);
+      if (Number(video.readyState) >= 2) onReady();
+    });
+    waiter.promise = promise;
+    return promise;
   }
 
   suppressNextMediaEvent(type) {
@@ -225,6 +296,23 @@ export class NativeMediaAdapter extends PlayerAdapter {
     });
   }
 
+  async waitForPlayStart(playPromise, { allowMutedFallback = false } = {}) {
+    let timeout = null;
+    const deadline = new Promise((_resolve, reject) => {
+      timeout = setTimeout(() => {
+        const error = new Error('Timed out while starting media playback');
+        error.name = allowMutedFallback ? 'NotAllowedError' : 'MediaPlayTimeoutError';
+        error.code = 'media_play_timeout';
+        reject(error);
+      }, this.playStartTimeoutMs);
+    });
+    try {
+      return await Promise.race([playPromise, deadline]);
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   async recoverMutedAutoplay(generation) {
     if (
       this.autoplayRecoveryPromise
@@ -239,7 +327,7 @@ export class NativeMediaAdapter extends PlayerAdapter {
       video.muted = true;
       const playPromise = this.playVideo(true, video);
       this.callbacks.onMutedAutoplay?.();
-      await playPromise;
+      await this.waitForPlayStart(playPromise);
     })();
     this.autoplayRecoveryPromise = recoveryPromise;
     this.autoplayRecoveryGeneration = generation;
@@ -264,12 +352,18 @@ export class NativeMediaAdapter extends PlayerAdapter {
     this.playbackUrl = playback.playbackUrl;
     this.media = playback.media || null;
     this.shouldBePlaying = !playback.paused;
-    this.setPresentationState(playback.paused ? 'paused' : 'loading');
+    this.setPresentationState(
+      changedMedia || this.mediaReadyWaiter || !playback.paused ? 'loading' : 'paused',
+    );
     const video = this.ensureVideo();
 
     await this.runRemoteOperation(async (generation) => {
       const position = Math.max(0, targetSeconds);
+      let mediaReady = this.mediaReadyWaiter?.video === video
+        ? this.mediaReadyWaiter.promise
+        : Promise.resolve(true);
       if (changedMedia) {
+        this.cancelMediaReadyWaiter();
         this.clearSuppressedMediaEvents();
         const defaultRate = Number.isFinite(video.defaultPlaybackRate) ? video.defaultPlaybackRate : 1;
         const loadRateToken = Math.abs(this.getPlaybackRate() - defaultRate) > RATE_EPSILON
@@ -283,6 +377,7 @@ export class NativeMediaAdapter extends PlayerAdapter {
           throw error;
         }
         this.seekTo(position);
+        mediaReady = this.waitForMediaReady(video, generation);
       } else {
         const drift = Math.abs(this.getCurrentTime() - position);
         const threshold = playback.paused
@@ -302,19 +397,22 @@ export class NativeMediaAdapter extends PlayerAdapter {
             throw error;
           }
         }
-        await delay(0);
+        await mediaReady;
         if (generation === this.remoteApplyGeneration) this.setPresentationState('paused');
       } else {
         this.setPresentationState('loading');
         try {
-          await this.playVideo(true);
+          await Promise.all([
+            mediaReady,
+            this.waitForPlayStart(this.playVideo(true), { allowMutedFallback: true }),
+          ]);
         } catch (error) {
           // A newer apply() can replace the source and abort this play request.
           // That stale rejection must not surface as an error for the new media.
           if (generation !== this.remoteApplyGeneration) return;
           if (error?.name !== 'NotAllowedError' || !this.shouldBePlaying) throw error;
           try {
-            await this.recoverMutedAutoplay(generation);
+            await Promise.all([mediaReady, this.recoverMutedAutoplay(generation)]);
           } catch (recoveryError) {
             if (generation !== this.remoteApplyGeneration) return;
             throw recoveryError;
@@ -381,6 +479,7 @@ export class NativeMediaAdapter extends PlayerAdapter {
   }
 
   resetVideo() {
+    this.cancelMediaReadyWaiter();
     const video = this.video;
     if (video && this.videoEventHandlers) {
       for (const [type, handler] of Object.entries(this.videoEventHandlers)) {
@@ -408,6 +507,7 @@ export class NativeMediaAdapter extends PlayerAdapter {
     this.autoplayRecoveryGeneration = null;
     this.autoplayRecoveryVideo = null;
     this.videoEventHandlers = null;
+    this.mediaReadyWaiter = null;
     this.clearSuppressedMediaEvents();
     this.remoteApplyGeneration += 1;
     this.setPresentationState('idle');

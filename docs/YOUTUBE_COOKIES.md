@@ -116,7 +116,7 @@ the protected root `.env`:
 YTDLP_COOKIEFILE_SOURCE=/run/secrets/youtube.cookies.txt
 YTDLP_COOKIEFILE=/tmp/dreamstream-media/youtube.cookies.txt
 MEDIA_EGRESS_PROXY=http://media-egress:7890
-YTDLP_PLAYER_CLIENT=mweb
+YTDLP_PLAYER_CLIENT=web_embedded
 ```
 
 The Compose mount exposes only `deploy/secrets/media/` read-only at
@@ -124,8 +124,9 @@ The Compose mount exposes only `deploy/secrets/media/` read-only at
 VLESS configuration. Only the non-root Mihomo container receives that ignored
 file read-only; it has no host-published proxy port.
 `YTDLP_COOKIEFILE_SOURCE` names that immutable secret; startup copies it into a
-private `0700` tmpfs directory as a stable `0600` runtime base. Each resolve
-creates its own disposable `0600` jar from that base, lets yt-dlp update it, and
+private `0700` tmpfs directory as a stable `0600` runtime base. Each actual
+cache-miss yt-dlp extraction gives its one-shot resolver subprocess a disposable
+`0600` jar from that base, lets yt-dlp update it, and
 deletes it after `YoutubeDL.close()` without writing back. Never put a host path
 in either setting, never set both paths to the same file, and never point
 `YTDLP_COOKIEFILE` at `/run/secrets`: using the read-only source directly causes
@@ -171,8 +172,8 @@ DREAMSTREAM_BASE_URL=https://dreamstream99.lucius7.dev npm run smoke:e2e
 
 Health alone validates process readiness, not whether YouTube accepts the
 session. The generic code default remains yt-dlp's authenticated `default`
-preset, but production uses the real `mweb` client with the Hong Kong VLESS
-Reality egress. The affected Topic/Release probes must return playable byte
+preset, but production uses the real `web_embedded` client with the Hong Kong VLESS
+Reality egress. Representative probes must return playable byte
 ranges through that exact route. An unknown client name
 may be silently ignored and fall back to defaults, invalidating attribution. A
 format listing, including format 18, or a successful resolve is therefore insufficient:

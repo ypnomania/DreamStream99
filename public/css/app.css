@@ -351,6 +351,10 @@ button:disabled { color: #808080; text-shadow: 1px 1px #fff; }
 .player-message-overlay { position:absolute; inset:0; z-index:8; display:grid; place-content:center; justify-items:center; gap:8px; padding:18px; background:rgba(0,0,0,.78); color:#fff; text-align:center; }
 .player-message-overlay strong { max-width:360px; color:#fff; font:700 13px var(--ui-font); }
 .player-message-overlay button { min-height:28px; font-weight:700; }
+.player-loading-overlay { pointer-events:none; }
+.player-loading-overlay small { color:#c0c0c0; font:11px var(--ui-font); }
+.loading-dots { color:#ffff00; font:10px var(--ui-font); letter-spacing:3px; animation:loading-blink 1.1s steps(2,end) infinite; }
+@keyframes loading-blink { 50% { opacity:.35; } }
 .unmute-overlay { background:rgba(0,0,0,.42); pointer-events:none; }
 .unmute-overlay button { pointer-events:auto; }
 .retro-player-controls {

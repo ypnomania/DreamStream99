@@ -14,6 +14,7 @@ from media_service.main import (
     app,
     create_relay_http_client,
     get_relay_http_client,
+    get_media_resolver_executor,
     get_relay_sessions,
 )
 from media_service.relay import (
@@ -60,6 +61,14 @@ FRESH_UPSTREAM_URL = "https://rr2---sn-test.googlevideo.com/fresh?sig=current"
 MEDIA_GRANT_SECRET = "test-media-grant-secret-" + ("x" * 48)
 
 
+class _InlineResolverExecutor:
+    async def resolve(self, source_url: str):
+        return await anyio.to_thread.run_sync(
+            main_module.resolve_youtube,
+            source_url,
+        )
+
+
 def refreshable_target() -> RelayTarget:
     return RelayTarget(
         STALE_UPSTREAM_URL,
@@ -101,6 +110,9 @@ def relay_harness(monkeypatch):
     monkeypatch.delenv("MEDIA_EGRESS_PROXY", raising=False)
     monkeypatch.delenv("YTDLP_PROXY", raising=False)
     app.dependency_overrides[get_relay_sessions] = lambda: store
+    app.dependency_overrides[get_media_resolver_executor] = (
+        lambda: _InlineResolverExecutor()
+    )
 
     def install_transport(handler) -> None:
         client = create_relay_http_client(transport=httpx.MockTransport(handler))

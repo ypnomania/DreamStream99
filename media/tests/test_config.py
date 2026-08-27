@@ -13,6 +13,7 @@ from media_service.config import (
     MediaEgressProxySettings,
     MediaGrantSettings,
     MediaOriginSettings,
+    MediaResolutionSettings,
     RelayRefreshSettings,
     SafeYtDlpLogger,
     YtDlpSettings,
@@ -190,6 +191,41 @@ def test_refresh_limits_are_configurable_and_strictly_positive():
         failure_cooldown_seconds=3.0,
         max_concurrent_refreshes=2,
     )
+
+
+def test_media_resolution_limits_are_configurable_and_strictly_positive():
+    settings = MediaResolutionSettings.from_env(
+        {
+            "MEDIA_RESOLVE_CACHE_TTL_SECONDS": "120.5",
+            "MEDIA_RESOLVE_MAX_CACHE_ENTRIES": "32",
+            "MEDIA_RESOLVE_MAX_CONCURRENT": "2",
+            "MEDIA_RESOLVE_MAX_PENDING": "6",
+            "MEDIA_RESOLVE_TIMEOUT_SECONDS": "18",
+        }
+    )
+
+    assert settings == MediaResolutionSettings(
+        cache_ttl_seconds=120.5,
+        max_cache_entries=32,
+        max_concurrent_resolutions=2,
+        max_pending_resolutions=6,
+        timeout_seconds=18.0,
+    )
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("MEDIA_RESOLVE_CACHE_TTL_SECONDS", "0"),
+        ("MEDIA_RESOLVE_MAX_CACHE_ENTRIES", "1.5"),
+        ("MEDIA_RESOLVE_MAX_CONCURRENT", "-1"),
+        ("MEDIA_RESOLVE_MAX_PENDING", "0"),
+        ("MEDIA_RESOLVE_TIMEOUT_SECONDS", "nan"),
+    ],
+)
+def test_invalid_media_resolution_limits_are_rejected(name, value):
+    with pytest.raises(ConfigurationError):
+        MediaResolutionSettings.from_env({name: value})
 
 
 @pytest.mark.parametrize(

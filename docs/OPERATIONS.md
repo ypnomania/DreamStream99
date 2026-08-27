@@ -48,11 +48,57 @@ For a dependency-only media rebuild, verify Node, EJS, yt-dlp, and the provider 
 | Restart Caddy | Short reconnect; control rooms and relay sessions remain |
 | Restart PO provider | In-flight/future resolves may fail briefly; existing relay sessions remain |
 | Restart Mihomo egress | In-flight resolves/relays fail; signed URLs must be refreshed after the same VLESS exit returns |
-| Restart media | All opaque relay capabilities disappear; browsers must resolve again |
+| Restart media | Opaque relay capabilities and the short resolution cache disappear; browsers must resolve again |
 | Restart control | All rooms, messages, memberships, and guest credentials disappear |
 | Rotate HMAC secret | Existing grants become invalid; restart control and media with the new identical value |
 
 Only one Node control replica and one Uvicorn worker are supported. Do not add replicas behind Caddy without redesigning state ownership.
+
+## Resolve latency and loading
+
+The production defaults protect a small VPS from duplicate yt-dlp processes:
+
+```dotenv
+MEDIA_RESOLVE_CACHE_TTL_SECONDS=300
+MEDIA_RESOLVE_MAX_CACHE_ENTRIES=128
+MEDIA_RESOLVE_MAX_CONCURRENT=1
+MEDIA_RESOLVE_MAX_PENDING=8
+MEDIA_RESOLVE_TIMEOUT_SECONDS=45
+```
+
+Requests for the same `MediaRef` share one in-flight extraction, then successful
+results enter a process-local LRU cache for five minutes. Each authorized
+request still receives its own opaque relay capability. The cache never exposes
+the real Google CDN URL, and failed resolutions are not cached. Cache misses use
+one-shot subprocesses, so the 45-second deadline terminates yt-dlp instead of
+leaving an abandoned worker thread. Keep concurrency at `1` on a small VPS:
+raising it can turn two simultaneous viewers into CPU or memory contention
+without reducing upstream latency.
+
+A cold first load normally takes several seconds and the browser should show a
+resolving or buffering state during that interval. A second peer requesting the
+same media should join the existing extraction or use its recent successful
+result. If both peers remain unresolved beyond the 45-second deadline:
+
+1. Confirm the running container received the five `MEDIA_RESOLVE_*` values.
+2. Check generic media outcomes and container CPU/memory without logging source,
+   relay, upstream URL, cookie, grant, or token values.
+3. Check host-wide CPU consumers as well as Docker statistics. A stale
+   interactive management shell attached to a deleted TTY can starve yt-dlp's
+   Node challenge solver even when the media container itself looks healthy.
+   Resolve the exact process and verify that it is not a daemon before stopping
+   it; never use a broad process-name kill.
+4. Verify `pot-provider`, Mihomo, and the exact egress path before retrying once.
+5. Check whether another video is already using the single global extraction
+   slot; repeated client retries only extend the queue.
+6. Run one known-media public smoke, then a two-browser host/guest check. Both
+   source fields should show the canonical YouTube URL reconstructed from
+   `MediaRef`, not a blank value or an opaque relay URL.
+
+The short resolution cache and the relay's 403 refresh coordinator solve
+different problems. Cache/singleflight reduce repeated initial extraction;
+403 recovery refreshes an expired upstream target for an existing relay
+session.
 
 ## 403 recovery checklist
 
@@ -67,7 +113,7 @@ If the browser still fails:
 1. Check media logs for a generic resolve/refresh failure; never add logging of raw URLs, cookies, headers, or tokens.
 2. Confirm `pot-provider` and `media` are healthy.
 3. Confirm media sees Node 22, `yt-dlp-ejs`, the bgutil plugin,
-   `YTDLP_PLAYER_CLIENT=mweb`, and
+   `YTDLP_PLAYER_CLIENT=web_embedded`, and
    `MEDIA_EGRESS_PROXY=http://media-egress:7890` without printing any secret
    sidecar fields.
 4. Re-run the smoke test with a known public progressive video.
@@ -96,17 +142,20 @@ CORS can be spoofed by a non-browser client. Treat credentials and capabilities 
 
 ## Capacity and abuse
 
-Control bounds rooms, connections, credentials, frame sizes, request bodies, chat rate, and playback command rate. Media bounds capability count and refresh concurrency, but streamed bytes are intentionally not transcoded or globally rate-limited.
+Control bounds rooms, connections, credentials, frame sizes, request bodies,
+chat rate, and playback command rate. Media bounds capability count, resolution
+cache size, yt-dlp concurrency, resolve time, and refresh concurrency, but
+streamed bytes are intentionally not transcoded or globally rate-limited.
 
 Monitor:
 
 - VPS egress bytes and provider billing;
 - open connections and file descriptors;
 - control room capacity/rate-limit responses;
-- media resolve latency and 502 rate;
+- media resolve latency, timeout rate, cache effectiveness, and 5xx rate;
 - Mihomo health/restart counts;
 - disk used by Docker images and logs;
-- CPU/memory during concurrent yt-dlp refreshes.
+- CPU/memory during yt-dlp resolution and refreshes.
 
 If bandwidth abuse occurs, revoke the room by restarting control (all rooms) or restart media to invalidate all relay capabilities, then investigate before reopening. A per-room revocation list or external rate limiter is not part of this version.
 
@@ -177,7 +226,7 @@ not ordinary configuration. It must remain owned by numeric uid/gid
 `/run/secrets/youtube.cookies.txt`. Configure that path as
 `YTDLP_COOKIEFILE_SOURCE`; configure `YTDLP_COOKIEFILE` as the distinct private
 tmpfs base `/tmp/dreamstream-media/youtube.cookies.txt`. Never point that path at
-`/run/secrets`: each resolve uses a unique disposable writable copy because
+`/run/secrets`: each cache-miss yt-dlp extraction uses a unique disposable writable copy because
 yt-dlp rewrites its jar on close, then deletes the copy without mutating the
 mounted secret or the stable runtime base.
 
@@ -199,8 +248,8 @@ mounted secret or the stable runtime base.
 Use the commands and account-safety checklist in [YouTube cookie
 operations](YOUTUBE_COOKIES.md). Cookie rotation recreates media and therefore
 invalidates existing relay capabilities; browser recovery must resolve again.
-This deployment keeps `YTDLP_PLAYER_CLIENT=mweb`: the three production
-Topic/Release probes must expose progressive streams with this real client and the
+This deployment keeps `YTDLP_PLAYER_CLIENT=web_embedded`: representative production
+probes must expose progressive streams with this real client and the
 Hong Kong VLESS egress. A cookie exported under a different network
 egress may be rotated into a logged-out session after reaching the VPS; create
 the replacement isolated browser session through the same configured Mihomo

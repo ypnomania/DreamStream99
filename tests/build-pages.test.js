@@ -34,6 +34,7 @@ test('Pages build injects only public backend endpoints for production', async (
   const runtime = await readFile(path.join(root, 'dist/runtime-config.js'), 'utf8');
   const html = await readFile(path.join(root, 'dist/index.html'), 'utf8');
   const app = await readFile(path.join(root, 'dist/js/app.js'), 'utf8');
+  const mediaRef = await readFile(path.join(root, 'dist/js/media-ref.js'), 'utf8');
   const router = await readFile(path.join(root, 'dist/js/player-adapter-router.js'), 'utf8');
   assert.match(runtime, /"mode": "websocket"/);
   assert.match(runtime, /"apiUrl": "https:\/\/dreamstream99\.lucius7\.dev\/api\/rooms"/);
@@ -42,6 +43,9 @@ test('Pages build injects only public backend endpoints for production', async (
   assert.doesNotMatch(runtime, /TOKEN|SECRET|PASSWORD/);
   assert.doesNotMatch(`${html}\n${app}\n${router}`, /iframe_api|youtube-adapter|<iframe/i);
   assert.match(router, /new NativeMediaAdapter/);
+  assert.match(html, /id="playerLoadingOverlay"/);
+  assert.match(app, /canonicalMediaUrl/);
+  assert.match(mediaRef, /www\.youtube\.com\/watch\?v=/);
   await assert.rejects(readFile(path.join(root, 'dist/js/youtube-adapter.js'), 'utf8'), /ENOENT/);
   await assert.rejects(readFile(path.join(root, 'dist/js/desktop.js.bak'), 'utf8'), /ENOENT/);
 });

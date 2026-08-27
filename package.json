@@ -12,7 +12,7 @@
     "smoke:e2e": "node scripts/smoke-e2e.mjs",
     "test": "node --test tests/*.test.js",
     "test:control": "node --test tests/control-service.test.js",
-    "check": "node --check server/index.js && node --check server/control-service.js && node --check server/media-grant.js && node --check server/room-state.js && node --check public/config.js && node --check public/runtime-config.js && node --check public/assets-config.js && node --check public/js/room-client.js && node --check public/js/desktop.js && node --check public/js/app.js && node --check public/js/player-adapter.js && node --check public/js/player-adapter-router.js && node --check public/js/native-media-adapter.js && node --check public/js/media-recovery.js && node --check scripts/build-pages.js && node --check scripts/smoke-e2e.mjs",
+    "check": "node --check server/index.js && node --check server/control-service.js && node --check server/media-grant.js && node --check server/room-state.js && node --check public/config.js && node --check public/runtime-config.js && node --check public/assets-config.js && node --check public/js/room-client.js && node --check public/js/desktop.js && node --check public/js/app.js && node --check public/js/player-adapter.js && node --check public/js/player-adapter-router.js && node --check public/js/native-media-adapter.js && node --check public/js/media-recovery.js && node --check public/js/media-ref.js && node --check scripts/build-pages.js && node --check scripts/smoke-e2e.mjs",
     "verify": "npm run check && npm test"
   },
   "engines": {

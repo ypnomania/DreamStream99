@@ -126,6 +126,11 @@
                       <div id="playerHost" class="media-host"></div>
                     </div>
                     <div id="mediaBadge" class="media-badge is-hidden">MEDIA</div>
+                    <div id="playerLoadingOverlay" class="player-message-overlay player-loading-overlay is-hidden" role="status" aria-live="polite">
+                      <strong id="playerLoadingMessage" data-copy="mediaResolving">Preparing secure video stream...</strong>
+                      <span class="loading-dots" aria-hidden="true">■ ■ ■</span>
+                      <small data-copy="mediaLoadingHint">The first load can take a few seconds.</small>
+                    </div>
                     <div id="playerErrorOverlay" class="player-message-overlay is-hidden" role="alert">
                       <strong id="playerErrorMessage">The media stream is unavailable</strong>
                       <button id="retryPlayerButton" type="button" data-copy="retryPlayer">Retry</button>

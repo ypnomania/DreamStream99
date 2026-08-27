@@ -3,6 +3,9 @@ const PROTOCOL_VERSION = 1;
 const WEBSOCKET_PROTOCOL = 'dreamstream-v1';
 const CREDENTIAL_PROTOCOL_PREFIX = 'token.';
 const MEDIA_SOURCE_CACHE_MS = 10 * 60 * 1000;
+const DEFAULT_MEDIA_RESOLVE_TIMEOUT_MS = 55_000;
+const DEFAULT_CREDENTIAL_TIMEOUT_MS = 15_000;
+const DEFAULT_WEBSOCKET_CONNECT_TIMEOUT_MS = 15_000;
 
 function randomId() {
   return globalThis.crypto?.randomUUID?.()
@@ -199,12 +202,30 @@ function isBoundedMediaString(value, maxLength) {
  * { type: 'response', requestId, ok, payload? }.
  */
 export class WebSocketRoomClient extends RoomClient {
-  constructor({ apiUrl, websocketUrl = null, mediaUrl = null, fetchImpl, WebSocketImpl } = {}) {
+  constructor({
+    apiUrl,
+    websocketUrl = null,
+    mediaUrl = null,
+    fetchImpl,
+    WebSocketImpl,
+    mediaResolveTimeoutMs = DEFAULT_MEDIA_RESOLVE_TIMEOUT_MS,
+    credentialTimeoutMs = DEFAULT_CREDENTIAL_TIMEOUT_MS,
+    websocketConnectTimeoutMs = DEFAULT_WEBSOCKET_CONNECT_TIMEOUT_MS,
+  } = {}) {
     super();
     if (!apiUrl) throw new Error('WT_RUNTIME.apiUrl is required in websocket mode');
     this.apiUrl = normalizeRoomsApiUrl(apiUrl);
     this.websocketUrl = websocketUrl;
     this.mediaUrl = mediaUrl;
+    this.mediaResolveTimeoutMs = Number.isFinite(mediaResolveTimeoutMs) && mediaResolveTimeoutMs > 0
+      ? mediaResolveTimeoutMs
+      : DEFAULT_MEDIA_RESOLVE_TIMEOUT_MS;
+    this.credentialTimeoutMs = Number.isFinite(credentialTimeoutMs) && credentialTimeoutMs > 0
+      ? credentialTimeoutMs
+      : DEFAULT_CREDENTIAL_TIMEOUT_MS;
+    this.websocketConnectTimeoutMs = (
+      Number.isFinite(websocketConnectTimeoutMs) && websocketConnectTimeoutMs > 0
+    ) ? websocketConnectTimeoutMs : DEFAULT_WEBSOCKET_CONNECT_TIMEOUT_MS;
     this.fetchImpl = fetchImpl || globalThis.fetch?.bind(globalThis);
     this.WebSocketImpl = WebSocketImpl || globalThis.WebSocket;
     this.socket = null;
@@ -222,6 +243,8 @@ export class WebSocketRoomClient extends RoomClient {
     this.mediaSourceCache = new Map();
     this.mediaSourcePending = new Map();
     this.mediaSourceGeneration = new Map();
+    this.mediaSourceControllers = new Set();
+    this.credentialController = null;
   }
 
   async connect() {
@@ -239,8 +262,19 @@ export class WebSocketRoomClient extends RoomClient {
       );
       this.socket = socket;
       let opened = false;
+      let settled = false;
+      const connectTimeout = setTimeout(() => {
+        fail(new Error('WebSocket connection timed out'));
+        try {
+          socket.close(1000, 'connection timeout');
+        } catch {
+          // The browser may already have discarded a failed handshake.
+        }
+      }, this.websocketConnectTimeoutMs);
       const fail = (error) => {
-        if (opened) return;
+        if (opened || settled) return;
+        settled = true;
+        clearTimeout(connectTimeout);
         this.connectReject = null;
         reject(error instanceof Error ? error : new Error('WebSocket connection failed'));
       };
@@ -248,6 +282,8 @@ export class WebSocketRoomClient extends RoomClient {
       socket.addEventListener('open', () => {
         if (socket !== this.socket) return;
         opened = true;
+        settled = true;
+        clearTimeout(connectTimeout);
         this.connectReject = null;
         this.reconnectAttempts = 0;
         this.emit('connection', { state: 'connected' });
@@ -364,12 +400,35 @@ export class WebSocketRoomClient extends RoomClient {
 
     this.disconnectSocket('refreshing room credential');
     this.clearMediaSources();
-    const response = await this.fetchImpl(buildRoomHttpUrl(this.apiUrl, roomId, 'join'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nickname }),
-    });
-    const result = await readJsonResponse(response, 'Could not join the room');
+    this.credentialController?.abort();
+    const controller = new AbortController();
+    this.credentialController = controller;
+    let timedOut = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, this.credentialTimeoutMs);
+    let response;
+    let result;
+    try {
+      response = await this.fetchImpl(buildRoomHttpUrl(this.apiUrl, roomId, 'join'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nickname }),
+        signal: controller.signal,
+      });
+      result = await readJsonResponse(response, 'Could not join the room');
+    } catch (error) {
+      if (!timedOut) throw error;
+      const timeoutError = new Error('Timed out while joining the room');
+      timeoutError.name = 'RoomJoinTimeoutError';
+      timeoutError.code = 'room_join_timeout';
+      timeoutError.cause = error;
+      throw timeoutError;
+    } finally {
+      clearTimeout(timeout);
+      if (this.credentialController === controller) this.credentialController = null;
+    }
     if (!response.ok || result?.ok === false) {
       throw responseError(result, 'Could not join the room', response.status);
     }
@@ -399,7 +458,7 @@ export class WebSocketRoomClient extends RoomClient {
 
     const generation = (this.mediaSourceGeneration.get(cacheKey) || 0) + 1;
     this.mediaSourceGeneration.set(cacheKey, generation);
-    const resolving = this.fetchMediaSource(media, mediaUrl).then((value) => {
+    const resolving = this.fetchMediaSource(media, mediaUrl, { force }).then((value) => {
       if (this.mediaSourceGeneration.get(cacheKey) === generation) {
         this.mediaSourceCache.set(cacheKey, {
           expiresAt: Date.now() + MEDIA_SOURCE_CACHE_MS,
@@ -414,54 +473,76 @@ export class WebSocketRoomClient extends RoomClient {
     return resolving;
   }
 
-  async fetchMediaSource(media, mediaUrl) {
-    const grantResponse = await this.fetchImpl(buildRoomHttpUrl(this.apiUrl, this.roomId, 'media-grants'), {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${this.credential}` },
-    });
-    const grant = await readJsonResponse(grantResponse, 'Could not authorize media playback');
-    if (!grantResponse.ok || grant?.ok === false) {
-      throw responseError(grant, 'Could not authorize media playback', grantResponse.status);
-    }
-    if (typeof grant?.mediaGrant !== 'string' || !sameMedia(grant.media, media)) {
-      throw new Error('The room service returned an invalid media grant');
-    }
+  async fetchMediaSource(media, mediaUrl, { force = false } = {}) {
+    const controller = new AbortController();
+    this.mediaSourceControllers.add(controller);
+    let timedOut = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, this.mediaResolveTimeoutMs);
 
-    const resolveUrl = buildMediaResolveUrl(mediaUrl);
-    const resolveResponse = await this.fetchImpl(resolveUrl, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${grant.mediaGrant}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ media: grant.media }),
-    });
-    const resolved = await readJsonResponse(resolveResponse, 'Could not resolve the media stream');
-    if (!resolveResponse.ok || resolved?.ok === false) {
-      throw responseError(resolved, 'Could not resolve the media stream', resolveResponse.status);
-    }
-    if (!sameMedia(resolved?.media, media) || !Array.isArray(resolved?.streams)) {
-      throw new Error('The media service returned an invalid response');
-    }
-    const stream = resolved.streams.find((candidate) => (
-      candidate
-      && typeof candidate === 'object'
-      && candidate.delivery === 'progressive'
-      && typeof candidate.relay_url === 'string'
-      && candidate.relay_url.trim()
-    ));
-    if (!stream) throw new Error('No compatible progressive media stream is available');
+    try {
+      const grantResponse = await this.fetchImpl(buildRoomHttpUrl(this.apiUrl, this.roomId, 'media-grants'), {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${this.credential}` },
+        signal: controller.signal,
+      });
+      const grant = await readJsonResponse(grantResponse, 'Could not authorize media playback');
+      if (!grantResponse.ok || grant?.ok === false) {
+        throw responseError(grant, 'Could not authorize media playback', grantResponse.status);
+      }
+      if (typeof grant?.mediaGrant !== 'string' || !sameMedia(grant.media, media)) {
+        throw new Error('The room service returned an invalid media grant');
+      }
 
-    const playbackUrl = new URL(buildRelayPlaybackUrl(mediaUrl, stream.relay_url));
-    if (playbackUrl.protocol !== 'https:' && playbackUrl.protocol !== 'http:') {
-      throw new Error('The media service returned an invalid relay URL');
+      const resolveUrl = buildMediaResolveUrl(mediaUrl);
+      const resolveResponse = await this.fetchImpl(resolveUrl, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${grant.mediaGrant}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ media: grant.media }),
+        signal: controller.signal,
+      });
+      const resolved = await readJsonResponse(resolveResponse, 'Could not resolve the media stream');
+      if (!resolveResponse.ok || resolved?.ok === false) {
+        throw responseError(resolved, 'Could not resolve the media stream', resolveResponse.status);
+      }
+      if (!sameMedia(resolved?.media, media) || !Array.isArray(resolved?.streams)) {
+        throw new Error('The media service returned an invalid response');
+      }
+      const stream = resolved.streams.find((candidate) => (
+        candidate
+        && typeof candidate === 'object'
+        && candidate.delivery === 'progressive'
+        && typeof candidate.relay_url === 'string'
+        && candidate.relay_url.trim()
+      ));
+      if (!stream) throw new Error('No compatible progressive media stream is available');
+
+      const playbackUrl = new URL(buildRelayPlaybackUrl(mediaUrl, stream.relay_url));
+      if (playbackUrl.protocol !== 'https:' && playbackUrl.protocol !== 'http:') {
+        throw new Error('The media service returned an invalid relay URL');
+      }
+      return {
+        playbackUrl: playbackUrl.href,
+        media: clone(resolved.media),
+        metadata: normalizeMediaMetadata(resolved.metadata),
+        stream: clone(stream),
+      };
+    } catch (error) {
+      if (!timedOut) throw error;
+      const timeoutError = new Error('Timed out while preparing the media stream');
+      timeoutError.name = 'MediaResolveTimeoutError';
+      timeoutError.code = 'media_resolve_timeout';
+      timeoutError.cause = error;
+      throw timeoutError;
+    } finally {
+      clearTimeout(timeout);
+      this.mediaSourceControllers.delete(controller);
     }
-    return {
-      playbackUrl: playbackUrl.href,
-      media: clone(resolved.media),
-      metadata: normalizeMediaMetadata(resolved.metadata),
-      stream: clone(stream),
-    };
   }
 
   invalidateMedia(media) {
@@ -473,7 +554,10 @@ export class WebSocketRoomClient extends RoomClient {
     this.manualClose = true;
     clearTimeout(this.reconnectTimer);
     this.lastJoin = null;
+    this.credentialController?.abort();
+    this.credentialController = null;
     this.disconnectSocket('client closed');
+    this.clearMediaSources();
   }
 
   disconnectSocket(reason) {
@@ -499,6 +583,8 @@ export class WebSocketRoomClient extends RoomClient {
   }
 
   clearMediaSources() {
+    for (const controller of this.mediaSourceControllers) controller.abort();
+    this.mediaSourceControllers.clear();
     this.mediaSourceCache.clear();
     this.mediaSourcePending.clear();
     this.mediaSourceGeneration.clear();

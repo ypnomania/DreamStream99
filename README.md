@@ -4,7 +4,7 @@
 [![Media CI](https://github.com/ypnomania/DreamStream99/actions/workflows/media-ci.yml/badge.svg)](https://github.com/ypnomania/DreamStream99/actions/workflows/media-ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-**Watch together, like it is 1999.** DreamStream 99 is a self-hosted YouTube watch party presented as a Windows 98 desktop. The static client runs on GitHub Pages; one VPS owns room synchronization and relays progressive MP4 byte ranges without exposing Google CDN URLs.
+**Watch together, like it is 1999.** DreamStream 99 is a self-hosted YouTube watch party presented as a Windows 98 desktop. Its physical deployment has two nodes: GitHub Pages serves the static client, while one VPS owns room synchronization and relays progressive MP4 byte ranges without exposing Google CDN URLs.
 
 一个真正可联机的复古观影房：GitHub Pages 承载纯静态前端，VPS 上的 Node.js、FastAPI 与 Caddy 负责房间同步、媒体解析和 Range 转发。
 
@@ -17,8 +17,10 @@
 - Native HTML5 `<video>` playback; no YouTube IFrame API or embedded third-party player.
 - Host-created rooms, guest invite links, member presence, chat, and synchronized load/play/pause/seek/rate commands.
 - Stable `MediaRef` room state: `{ "provider": "youtube", "id": "…" }`. Expiring CDN URLs never enter the control protocol.
+- Host and guest source fields show the same canonical YouTube URL reconstructed from `MediaRef`; resolve and buffer states remain visible until the native player is ready.
 - One owner permission: `guestPlaybackControl`. Chat remains available to every joined member.
 - Short-lived HMAC media grants, opaque relay capabilities, exact-origin checks, bounded stores, and control-plane rate limits.
+- Same-media resolve singleflight, a bounded five-minute success cache, low-resource extraction concurrency, and terminable one-shot resolver subprocesses keep simultaneous host/guest joins fast and enforce the 45-second deadline.
 - yt-dlp metadata resolution, progressive MP4 selection, HTTP `HEAD`/single-range relay, and one bounded automatic re-resolve after an upstream 403.
 - Docker Compose deployment with non-root, read-only control and media containers; Caddy terminates TLS and exposes only the public gateway.
 - Protected YouTube cookies, a pinned private Mihomo HTTP proxy backed by one Hong Kong VLESS Reality egress, an internal-only PO-token provider, and Node 22 EJS runtime for current YouTube challenges.
@@ -48,7 +50,7 @@ flowchart LR
 | Frontend | GitHub Pages | Static Win98 UI, `WebSocketRoomClient`, `NativeMediaAdapter`, clock-offset and playback-anchor logic |
 | Gateway | VPS Caddy | TLS, strict CORS, security headers, `/api`/`/media` routing, streaming flush |
 | Control | VPS Node.js 22 | In-memory rooms, credentials, WebSocket v1 protocol, state broadcasts, 24-hour empty-room cleanup |
-| Media | VPS Python 3.13 | Media-grant validation, yt-dlp resolution, opaque relay sessions, Range forwarding, 403 refresh |
+| Media | VPS Python 3.13 | Media-grant validation, bounded/cached yt-dlp resolution, opaque relay sessions, Range forwarding, 403 refresh |
 | Media egress | VPS Mihomo | Keeps the application-facing HTTP proxy private and carries every media operation through one reviewed Hong Kong VLESS Reality node |
 
 The application still uses only `http://media-egress:7890`. The non-root Mihomo
@@ -71,9 +73,10 @@ Media:     https://dreamstream99.lucius7.dev/media
 1. The host creates a room with `POST /api/rooms`; its owner token stays in the URL fragment, which is not sent in HTTP requests.
 2. A copied invite omits that fragment. A guest exchanges a nickname at `POST /api/rooms/{roomId}/join` for a 12-hour room credential.
 3. Both peers open the room WebSocket with subprotocols `dreamstream-v1` and `token.<credential>`. Every JSON frame carries `version: 1`.
-4. Room state broadcasts only a `MediaRef`. A joined peer requests a 120-second `mg1` media grant, then posts that grant and the same `MediaRef` to `/media/resolve`.
-5. FastAPI returns metadata and an opaque `/relay/{capability}` URL. The browser mounts it on the native player with `crossOrigin` set before `src`.
-6. If a relay origin expires with 403, concurrent requests share one refresh, the exact format is reselected, and the original Range is retried once. The browser can also obtain a new grant and capability after an expired or restarted session.
+4. Room state broadcasts only a `MediaRef`. Every peer reconstructs the same canonical YouTube URL for display, then requests a 120-second `mg1` grant and posts that grant plus the `MediaRef` to `/media/resolve`.
+5. Requests for the same media share one in-flight yt-dlp extraction. Successful results enter a bounded short cache, while the UI reports resolve and buffer progress; a cold first load normally takes several seconds depending on YouTube and the configured egress.
+6. FastAPI returns metadata and an opaque `/relay/{capability}` URL. The browser mounts it on the native player with `crossOrigin` set before `src`; neither the canonical display URL nor the response reveals the real Google CDN target.
+7. If a relay origin expires with 403, concurrent requests share one refresh, the exact format is reselected, and the original Range is retried once. The browser can also obtain a new grant and capability after an expired or restarted session.
 
 ## Deploy on a VPS
 
@@ -91,7 +94,7 @@ that file. Install the ignored single-node Mihomo VLESS Reality configuration as
 [deployment guide](docs/DEPLOYMENT.md), then set
 `COMPOSE_FILE=docker-compose.yml:deploy/compose.media-egress.yml`,
 `MEDIA_EGRESS_PROXY=http://media-egress:7890`, and the verified
-`YTDLP_PLAYER_CLIENT=mweb` in the protected `.env`. For a fresh VPS where
+`YTDLP_PLAYER_CLIENT=web_embedded` in the protected `.env`. For a fresh VPS where
 Compose should own Caddy:
 
 ```bash
@@ -147,11 +150,16 @@ The smoke script creates a disposable room and never prints room credentials or 
 | `PUBLIC_HOST` | `dreamstream99.lucius7.dev` | TLS hostname used by the bundled Caddy profile |
 | `MAX_ROOMS` | `10000` | Bound on process-local control rooms |
 | `YTDLP_COOKIEFILE_SOURCE` | empty | Optional read-only dedicated-account Netscape secret under `/run/secrets/` |
-| `YTDLP_COOKIEFILE` | empty | Private tmpfs base copied into a disposable writable jar for each resolve; enable with the source as documented in the [cookie guide](docs/YOUTUBE_COOKIES.md) |
-| `YTDLP_PLAYER_CLIENT` | `default` | yt-dlp player client; production selects `mweb` and validates it through the configured VLESS exit for Topic/Release videos |
+| `YTDLP_COOKIEFILE` | empty | Private tmpfs base copied into a disposable writable jar for each cache-miss yt-dlp extraction; enable with the source as documented in the [cookie guide](docs/YOUTUBE_COOKIES.md) |
+| `YTDLP_PLAYER_CLIENT` | `default` | yt-dlp player client; production selects `web_embedded` after real cold-resolve and Range validation through the configured VLESS exit |
 | `YTDLP_PO_TOKEN_PROVIDER` | internal bgutil endpoint | yt-dlp PO-token plugin extractor argument |
 | `MEDIA_EGRESS_PROXY` | empty | One validated HTTP(S) proxy shared by resolution, relay, and refresh; overlay value is `http://media-egress:7890` |
 | `YTDLP_PROXY` | empty | Deprecated compatibility alias; if both proxy variables are set, they must match exactly |
+| `MEDIA_RESOLVE_CACHE_TTL_SECONDS` | `300` | Lifetime of successful server-side resolution results; failures are not cached |
+| `MEDIA_RESOLVE_MAX_CACHE_ENTRIES` | `128` | LRU bound for successful resolution results |
+| `MEDIA_RESOLVE_MAX_CONCURRENT` | `1` | Global yt-dlp extraction limit; keep `1` on a small VPS |
+| `MEDIA_RESOLVE_MAX_PENDING` | `8` | Maximum distinct running or queued resolutions; overflow fails fast with `503` |
+| `MEDIA_RESOLVE_TIMEOUT_SECONDS` | `45` | Hard deadline; the one-shot resolver subprocess is terminated on expiry |
 | `RELAY_REFRESH_*` | see `.env.example` | Refresh deadline, failure cooldown, and global concurrency bound |
 
 For a fork, change `ALLOWED_ORIGIN`, `PUBLIC_HOST`, and the three public endpoint variables in [`.github/workflows/pages.yml`](.github/workflows/pages.yml) together.
@@ -160,12 +168,12 @@ For a fork, change `ALLOWED_ORIGIN`, `PUBLIC_HOST`, and the three public endpoin
 
 - CORS rejects missing, duplicate, and foreign browser origins, but CORS is not authentication and does not stop non-browser traffic. Room credentials, short-lived media grants, opaque relay capabilities, firewall rules, and bandwidth monitoring remain necessary.
 - Upstream URLs, yt-dlp raw output, cookies, request headers, and format IDs are never returned to the browser. Relay targets must be credential-free HTTPS `googlevideo.com` URLs and redirects are not followed.
-- Rooms, guest credentials, messages, and relay capabilities are intentionally process-local. Restarting a container loses that service's volatile state; deploy one control replica and one Uvicorn worker.
+- Rooms, guest credentials, messages, relay capabilities, and the short resolution cache are intentionally process-local. Restarting a container loses that service's volatile state; deploy one control replica and one Uvicorn worker.
 - A relay capability has a 15-minute sliding idle lifetime. It authorizes byte access during that window, so do not log or share relay URLs.
 - This architecture has no managed database, queue, transcoder, or control-plane subscription. The VPS, storage, DNS, and especially outbound media bandwidth can still cost money.
 - A directly addressed VPS is discoverable and is not a DDoS shield. This project provides application authorization and strict exposure, not volumetric attack protection.
 - YouTube behavior changes and some videos may require cookies, PO tokens, a supported JavaScript runtime, or different egress. Self-hosters are responsible for content rights and applicable platform terms.
-- A YouTube cookie file is a live account credential. Use only a dedicated low-value account, keep the source `deploy/secrets/media/youtube.cookies.txt` owned by uid/gid `10001` with mode `0400`, and never commit, paste, or log it. The media container mounts only `deploy/secrets/media`; it cannot read the separately mounted Mihomo VLESS configuration. Startup stages a private `0600` tmpfs base; each resolve gives yt-dlp a unique disposable writable copy, so extractor shutdown cannot alter the mounted secret or poison later requests. YouTube may invalidate login state when a workstation cookie is moved to a different VPS egress, so establish a new isolated session through the same exact VLESS public exit. Follow the [export, verification, rotation, and revocation procedure](docs/YOUTUBE_COOKIES.md).
+- A YouTube cookie file is a live account credential. Use only a dedicated low-value account, keep the source `deploy/secrets/media/youtube.cookies.txt` owned by uid/gid `10001` with mode `0400`, and never commit, paste, or log it. The media container mounts only `deploy/secrets/media`; it cannot read the separately mounted Mihomo VLESS configuration. Startup stages a private `0600` tmpfs base; each actual cache-miss yt-dlp extraction gives its one-shot resolver subprocess a unique disposable writable copy, so extractor shutdown cannot alter the mounted secret or poison later requests. YouTube may invalidate login state when a workstation cookie is moved to a different VPS egress, so establish a new isolated session through the same exact VLESS public exit. Follow the [export, verification, rotation, and revocation procedure](docs/YOUTUBE_COOKIES.md).
 
 Production media traffic must use the configured Hong Kong VLESS Reality egress consistently.
 Cookie creation/export, yt-dlp resolution, relay byte reads, and 403 recovery must

@@ -93,6 +93,35 @@ class FakeWebSocket {
   }
 }
 
+class HangingWebSocket {
+  static instances = [];
+
+  constructor(url, protocols) {
+    this.url = url;
+    this.protocols = protocols;
+    this.readyState = 0;
+    this.listeners = new Map();
+    HangingWebSocket.instances.push(this);
+  }
+
+  addEventListener(type, handler, options = {}) {
+    const entries = this.listeners.get(type) || [];
+    entries.push({ handler, once: Boolean(options.once) });
+    this.listeners.set(type, entries);
+  }
+
+  dispatch(type, event) {
+    const entries = [...(this.listeners.get(type) || [])];
+    this.listeners.set(type, (this.listeners.get(type) || []).filter((entry) => !entry.once));
+    for (const { handler } of entries) handler(event);
+  }
+
+  close(code = 1000, reason = '') {
+    this.readyState = 3;
+    queueMicrotask(() => this.dispatch('close', { code, reason }));
+  }
+}
+
 function jsonResponse(body, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -149,7 +178,7 @@ test('demo playback and chat commands emit UI-compatible events', async () => {
   assert.equal(chatEvent.body, 'hello from pages');
 });
 
-test('demo permissions use the control Worker guestPlaybackControl contract', async () => {
+test('demo permissions use the control service guestPlaybackControl contract', async () => {
   const client = new DemoRoomClient();
   await client.join({ roomId: ROOM_ID, nickname: 'Tester' });
 
@@ -265,7 +294,50 @@ test('guest join exchanges a nickname for a roomToken before opening WebSocket',
   assert.equal(fetchCalls[0].url, `https://control.example/api/rooms/${ROOM_ID}/join`);
   assert.equal(fetchCalls[0].options.method, 'POST');
   assert.equal(fetchCalls[0].options.body, JSON.stringify({ nickname: 'Viewer' }));
+  assert.ok(fetchCalls[0].options.signal instanceof AbortSignal);
   assert.deepEqual(FakeWebSocket.instances[0].protocols, ['dreamstream-v1', `token.${GUEST_TOKEN}`]);
+});
+
+test('guest credential exchange fails within a bounded deadline', async (t) => {
+  const client = new WebSocketRoomClient({
+    apiUrl: 'https://control.example/api/rooms',
+    credentialTimeoutMs: 5,
+    fetchImpl: async (_url, options) => new Promise((_resolve, reject) => {
+      options.signal.addEventListener('abort', () => {
+        const error = new Error('aborted');
+        error.name = 'AbortError';
+        reject(error);
+      }, { once: true });
+    }),
+    WebSocketImpl: FakeWebSocket,
+  });
+  t.after(() => client.close());
+
+  await assert.rejects(
+    client.join({ roomId: ROOM_ID, token: null, nickname: 'Viewer' }),
+    (error) => {
+      assert.equal(error.name, 'RoomJoinTimeoutError');
+      assert.equal(error.code, 'room_join_timeout');
+      return true;
+    },
+  );
+});
+
+test('WebSocket handshake fails within a bounded deadline', async (t) => {
+  HangingWebSocket.instances = [];
+  const client = new WebSocketRoomClient({
+    apiUrl: 'https://control.example/api/rooms',
+    fetchImpl: async () => { throw new Error('host must not exchange a token'); },
+    WebSocketImpl: HangingWebSocket,
+    websocketConnectTimeoutMs: 5,
+  });
+  t.after(() => client.close());
+
+  await assert.rejects(
+    client.join({ roomId: ROOM_ID, token: HOST_TOKEN, nickname: 'Host' }),
+    /WebSocket connection timed out/,
+  );
+  assert.equal(HangingWebSocket.instances[0].readyState, 3);
 });
 
 test('media resolution exchanges the room credential for a grant and caches the relay capability', async (t) => {
@@ -303,15 +375,67 @@ test('media resolution exchanges the room credential for a grant and caches the 
   assert.equal(calls.length, 2);
   assert.equal(calls[0].url, `https://control.example/api/rooms/${ROOM_ID}/media-grants`);
   assert.deepEqual(calls[0].options.headers, { Authorization: `Bearer ${HOST_TOKEN}` });
+  assert.ok(calls[0].options.signal instanceof AbortSignal);
   assert.equal(calls[1].url, 'https://media.example/resolve');
   assert.deepEqual(calls[1].options.headers, {
     Authorization: 'Bearer signed-media-grant',
     'Content-Type': 'application/json',
   });
   assert.equal(calls[1].options.body, JSON.stringify({ media: MEDIA }));
+  assert.equal(calls[1].options.signal, calls[0].options.signal);
 
   await client.resolveMedia(MEDIA, { force: true });
   assert.equal(calls.length, 4);
+  assert.equal(calls[3].options.body, JSON.stringify({ media: MEDIA }));
+});
+
+test('media grant and resolution share a bounded browser deadline', async (t) => {
+  FakeWebSocket.instances = [];
+  const client = new WebSocketRoomClient({
+    apiUrl: 'https://control.example/api/rooms',
+    mediaUrl: 'https://media.example',
+    mediaResolveTimeoutMs: 10,
+    fetchImpl: async (_url, options) => new Promise((_resolve, reject) => {
+      options.signal.addEventListener('abort', () => {
+        const error = new Error('aborted');
+        error.name = 'AbortError';
+        reject(error);
+      }, { once: true });
+    }),
+    WebSocketImpl: FakeWebSocket,
+  });
+  t.after(() => client.close());
+  await client.join({ roomId: ROOM_ID, token: HOST_TOKEN, nickname: 'Host' });
+
+  await assert.rejects(client.resolveMedia(MEDIA), (error) => {
+    assert.equal(error.name, 'MediaResolveTimeoutError');
+    assert.equal(error.code, 'media_resolve_timeout');
+    return true;
+  });
+});
+
+test('closing the client aborts an in-flight media request', async () => {
+  FakeWebSocket.instances = [];
+  const client = new WebSocketRoomClient({
+    apiUrl: 'https://control.example/api/rooms',
+    mediaUrl: 'https://media.example',
+    fetchImpl: async (_url, options) => new Promise((_resolve, reject) => {
+      options.signal.addEventListener('abort', () => {
+        const error = new Error('aborted');
+        error.name = 'AbortError';
+        reject(error);
+      }, { once: true });
+    }),
+    WebSocketImpl: FakeWebSocket,
+  });
+  await client.join({ roomId: ROOM_ID, token: HOST_TOKEN, nickname: 'Host' });
+
+  const resolving = client.resolveMedia(MEDIA);
+  await Promise.resolve();
+  client.close();
+
+  await assert.rejects(resolving, (error) => error?.name === 'AbortError');
+  assert.equal(client.mediaSourceControllers.size, 0);
 });
 
 test('a forced media refresh cannot be overwritten by an older pending resolve', async (t) => {

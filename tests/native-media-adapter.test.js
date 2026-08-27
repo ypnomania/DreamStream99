@@ -46,6 +46,7 @@ class FakeVideo {
     this.ended = false;
     this.error = null;
     this.duration = Number.NaN;
+    this.readyState = 4;
     this._currentTime = 0;
     this._playbackRate = 1;
     this.defaultPlaybackRate = 1;
@@ -188,7 +189,7 @@ class FakeVideo {
   }
 }
 
-function createHarness(t, callbacks = {}) {
+function createHarness(t, callbacks = {}, options = {}) {
   const originalDocument = globalThis.document;
   const videos = [];
   globalThis.document = {
@@ -210,7 +211,8 @@ function createHarness(t, callbacks = {}) {
       this.children = children;
     },
   };
-  const adapter = new NativeMediaAdapter(host, callbacks);
+  const adapter = new NativeMediaAdapter(host, callbacks, options);
+  t.after(() => adapter.destroy());
   return { adapter, host, videos };
 }
 
@@ -237,6 +239,56 @@ test('NativeMediaAdapter extends PlayerAdapter and mounts a configured video laz
   assert.equal(videos[0].preload, 'auto');
   assert.equal(videos[0].tabIndex, -1);
   assert.deepEqual(videos[0].style, { width: '100%', height: '100%', display: 'block' });
+});
+
+test('a new paused source stays loading until its first frame is ready', async (t) => {
+  const presentations = [];
+  const { adapter } = createHarness(t, {
+    onPresentationChange: ({ state }) => presentations.push(state),
+  });
+  const video = adapter.ensureVideo();
+  video.readyState = 0;
+
+  let settled = false;
+  const applying = adapter.apply(playback(URL_A), 3).then(() => {
+    settled = true;
+  });
+  await Promise.resolve();
+
+  assert.equal(settled, false);
+  assert.equal(adapter.presentationState, 'loading');
+  assert.deepEqual(presentations, ['loading']);
+
+  video.readyState = 2;
+  video.emit('loadeddata');
+  await applying;
+
+  assert.equal(settled, true);
+  assert.equal(adapter.presentationState, 'paused');
+  assert.deepEqual(presentations, ['loading', 'paused']);
+});
+
+test('same-source state updates join the pending first-frame wait', async (t) => {
+  const { adapter } = createHarness(t);
+  const video = adapter.ensureVideo();
+  video.readyState = 0;
+
+  const firstApply = adapter.apply(playback(URL_A), 3);
+  await Promise.resolve();
+  let latestSettled = false;
+  const latestApply = adapter.apply(playback(URL_A), 4).then(() => {
+    latestSettled = true;
+  });
+  await Promise.resolve();
+
+  assert.equal(latestSettled, false);
+  assert.equal(adapter.presentationState, 'loading');
+
+  video.readyState = 2;
+  video.emit('canplay');
+  await Promise.all([firstApply, latestApply]);
+  assert.equal(latestSettled, true);
+  assert.equal(adapter.presentationState, 'paused');
 });
 
 test('load A -> load B replaces src and positions B while the same URL is not reloaded', async (t) => {
@@ -316,6 +368,28 @@ test('playing apply calls and awaits video.play without echoing the programmatic
   assert.equal(video.paused, false);
   assert.equal(adapter.presentationState, 'playing');
   assert.deepEqual(presentations, ['loading', 'playing']);
+});
+
+test('a permanently pending play attempt retries muted and then fails within a deadline', async (t) => {
+  let mutedRecoveries = 0;
+  const { adapter } = createHarness(t, {
+    onMutedAutoplay: () => { mutedRecoveries += 1; },
+  }, { playStartTimeoutMs: 5 });
+  const video = adapter.ensureVideo();
+  video.playResults.push(deferred(), deferred());
+
+  await assert.rejects(
+    adapter.apply(playback(URL_A, { paused: false }), 1),
+    (error) => {
+      assert.equal(error.name, 'MediaPlayTimeoutError');
+      assert.equal(error.code, 'media_play_timeout');
+      return true;
+    },
+  );
+
+  assert.equal(video.playCalls, 2);
+  assert.equal(video.muted, true);
+  assert.equal(mutedRecoveries, 1);
 });
 
 test('same-source apply uses the exact paused and playing drift thresholds', async (t) => {

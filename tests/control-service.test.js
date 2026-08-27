@@ -162,6 +162,65 @@ test('native WebSocket v1 distributes state, enforces permissions, reconnects, a
   assert.equal((await previousClosed).code, 4001);
 });
 
+test('late guest join receives the current playback snapshot and a media-bound grant', async (t) => {
+  const fixture = await startControl(t);
+  const created = await createRoom(fixture.baseUrl);
+  const host = await openSocket(t, fixture.wsBase, created.roomId, created.hostToken);
+  await joinSocket(host, created.roomId, created.hostToken, 'Host', 'host-join');
+
+  host.send(frame('playback:command', 'host-load-before-guest', {
+    action: 'load', actionId: crypto.randomUUID(), position: 7, media: MEDIA,
+  }));
+  assert.equal((await host.takeResponse('host-load-before-guest')).payload.revision, 1);
+
+  host.send(frame('playback:command', 'host-play-before-guest', {
+    action: 'play', actionId: crypto.randomUUID(), position: 7,
+  }));
+  assert.equal((await host.takeResponse('host-play-before-guest')).payload.revision, 2);
+
+  const seekActionId = crypto.randomUUID();
+  host.send(frame('playback:command', 'host-seek-before-guest', {
+    action: 'seek', actionId: seekActionId, position: 42,
+  }));
+  assert.equal((await host.takeResponse('host-seek-before-guest')).payload.revision, 3);
+
+  const guestSession = await joinRoom(fixture.baseUrl, created.roomId, 'Late Viewer');
+  const guest = await openSocket(t, fixture.wsBase, created.roomId, guestSession.roomToken);
+  const joined = await joinSocket(
+    guest,
+    created.roomId,
+    guestSession.roomToken,
+    'Late Viewer',
+    'late-guest-join',
+  );
+  const { snapshot } = joined.payload;
+  assert.equal(Number.isFinite(snapshot.playback.anchorServerMs), true);
+  assert.ok(snapshot.playback.anchorServerMs <= snapshot.serverTime);
+  assert.deepEqual(snapshot.playback, {
+    revision: 3,
+    media: MEDIA,
+    paused: false,
+    anchorSeconds: 42,
+    anchorServerMs: snapshot.playback.anchorServerMs,
+    playbackRate: 1,
+    changedBy: 'Host',
+    actionId: seekActionId,
+  });
+
+  const grantResponse = await fetch(
+    `${fixture.baseUrl}/api/rooms/${created.roomId}/media-grants`,
+    { method: 'POST', headers: { Origin: ORIGIN, Authorization: `Bearer ${guestSession.roomToken}` } },
+  );
+  assert.equal(grantResponse.status, 200);
+  const grant = await grantResponse.json();
+  assert.deepEqual(grant.media, MEDIA);
+  const claims = verifyGrant(grant.mediaGrant, SECRET);
+  assert.equal(claims.roomId, created.roomId);
+  assert.equal(claims.subject, guestSession.clientId);
+  assert.equal(claims.role, 'guest');
+  assert.deepEqual(claims.media, MEDIA);
+});
+
 test('WebSocket join token is bound to the credential used during upgrade', async (t) => {
   const fixture = await startControl(t);
   const created = await createRoom(fixture.baseUrl);

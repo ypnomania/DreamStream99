@@ -20,7 +20,7 @@ test('cookie deployment contract stays least-privilege and discoverable', async 
   assert.match(compose, /YTDLP_PLAYER_CLIENT:\s*\$\{YTDLP_PLAYER_CLIENT:-default\}/);
   assert.match(environment, /^YTDLP_COOKIEFILE_SOURCE=$/m);
   assert.match(environment, /^YTDLP_COOKIEFILE=$/m);
-  assert.match(environment, /^YTDLP_PLAYER_CLIENT=mweb$/m);
+  assert.match(environment, /^YTDLP_PLAYER_CLIENT=web_embedded$/m);
   assert.match(environment, /^MEDIA_EGRESS_PROXY=http:\/\/media-egress:7890$/m);
   assert.doesNotMatch(environment, /^(?:SSH_EGRESS|VLESS_)[A-Z0-9_]*=/m);
   assert.match(environment, /\/run\/secrets\/youtube\.cookies\.txt/);

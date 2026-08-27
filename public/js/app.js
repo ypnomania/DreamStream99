@@ -3,6 +3,7 @@ import {
   MediaRecoveryController,
   shouldAutomaticallyRecoverMediaError,
 } from './media-recovery.js';
+import { canonicalMediaUrl } from './media-ref.js';
 import { PlayerAdapterRouter } from './player-adapter-router.js';
 import { createRoomClient, normalizeRoomsApiUrl } from './room-client.js';
 
@@ -101,6 +102,8 @@ const els = {
   playerSurface: $('#playerSurface'),
   playerHost: $('#playerHost'),
   mediaBadge: $('#mediaBadge'),
+  playerLoadingOverlay: $('#playerLoadingOverlay'),
+  playerLoadingMessage: $('#playerLoadingMessage'),
   playerErrorOverlay: $('#playerErrorOverlay'),
   playerErrorMessage: $('#playerErrorMessage'),
   retryPlayerButton: $('#retryPlayerButton'),
@@ -165,9 +168,13 @@ let messageHistory = [];
 let clockCalibrationTimer = null;
 let playerApplyGeneration = 0;
 let nativeRecoveryTask = null;
+let nativeRecoveryIdentity = null;
 let mountedMediaKey = null;
 const mediaMetadataCache = new Map();
-const mediaRecovery = new MediaRecoveryController();
+// The media service already refreshes one 403 internally. One browser-side
+// cache bypass is enough to mint a new capability without turning an
+// outage into several minutes of repeated loading screens.
+const mediaRecovery = new MediaRecoveryController({ maxAttempts: 1 });
 
 const playerAdapterCallbacks = {
   onPlay: (position) => sendPlayback('play', { position }),
@@ -179,6 +186,13 @@ const playerAdapterCallbacks = {
   onMutedAutoplay: () => {
     els.unmuteOverlay.classList.remove('is-hidden');
     toast(t('toastAutoplayMuted'));
+  },
+  onPresentationChange: ({ state }) => {
+    if (state === 'loading') {
+      showPlayerLoading(t('mediaBuffering'));
+    } else if (state === 'paused' || state === 'playing' || state === 'ended') {
+      hidePlayerLoading();
+    }
   },
   onInitError: (error) => showPlayerError(mediaErrorMessage(error, t('toastSyncFailed'))),
   onError: handlePlayerAdapterError,
@@ -276,6 +290,10 @@ roomClient.onConnection(({ state }) => {
   } else if (state === 'disconnected' && !isDemoMode) {
     if (activeNickname) reconnecting = true;
     joined = false;
+    playerApplyGeneration += 1;
+    playerAdapterRouter.destroy();
+    mountedMediaKey = null;
+    hidePlayerLoading();
     mediaRecovery.activate(null);
     setConnectionState(t('statusReconnecting'), 'syncing');
     activeRole = null;
@@ -295,6 +313,7 @@ async function applyPlaybackState(payload, force = false) {
   if (!incoming) return;
   if (!force && incoming.revision <= appliedRevision) return;
   const applyGeneration = ++playerApplyGeneration;
+  const previousMediaKey = mediaCacheKey(playback?.media);
 
   if (Number.isFinite(payload.serverTime)) {
     const roughOffset = payload.serverTime - Date.now();
@@ -309,12 +328,16 @@ async function applyPlaybackState(payload, force = false) {
     mediaRecovery.activate(null);
     playerAdapterRouter.destroy();
     mountedMediaKey = null;
+    hidePlayerLoading();
     showVideo(false);
     return;
   }
 
   const incomingMediaKey = mediaCacheKey(incoming.media);
-  mediaRecovery.activate(incomingMediaKey);
+  if (incomingMediaKey !== previousMediaKey) {
+    els.sourceInput.value = canonicalMediaUrl(incoming.media);
+  }
+  mediaRecovery.activate(mediaRecoveryIdentity(incoming));
   if (mountedMediaKey && mountedMediaKey !== incomingMediaKey) {
     playerAdapterRouter.destroy();
     mountedMediaKey = null;
@@ -322,12 +345,14 @@ async function applyPlaybackState(payload, force = false) {
 
   showVideo(true, incoming.media);
   hidePlayerError();
+  showPlayerLoading(t('mediaResolving'));
   els.rateSelect.value = String(incoming.playbackRate || 1);
   updatePlayVisual(incoming.paused);
 
   if (isDemoMode || !runtime.mediaUrl) {
     playerAdapterRouter.destroy();
     mountedMediaKey = null;
+    hidePlayerLoading();
     showVideo(false);
     updateControlsEnabled(true);
     return;
@@ -339,9 +364,16 @@ async function applyPlaybackState(payload, force = false) {
     if (applyGeneration !== playerApplyGeneration) return;
     playback = prepared;
     warmMediaMetadata(prepared).catch(() => {});
+    showPlayerLoading(t('mediaBuffering'));
     adapter = playerAdapterRouter.select(prepared);
     mountedMediaKey = incomingMediaKey;
     await adapter.apply(prepared, expectedPosition(prepared));
+    if (
+      applyGeneration === playerApplyGeneration
+      && adapter === playerAdapterRouter.adapter
+    ) {
+      hidePlayerLoading();
+    }
   } catch (error) {
     if (applyGeneration !== playerApplyGeneration) return;
     if (adapter && adapter !== playerAdapterRouter.adapter) return;
@@ -387,7 +419,10 @@ function handlePlayerAdapterError(code) {
     showPlayerError(message);
     return;
   }
-  if (nativeRecoveryTask) return;
+  if (
+    nativeRecoveryTask
+    && nativeRecoveryIdentity === mediaRecoveryIdentity(playback)
+  ) return;
   startMediaRecovery(playback).catch((error) => {
     if (error?.name === 'AbortError') return;
     const message = mediaErrorMessage(error, t('toastSyncFailed'));
@@ -397,17 +432,33 @@ function handlePlayerAdapterError(code) {
 }
 
 function startMediaRecovery(failedPlayback) {
-  if (nativeRecoveryTask) return nativeRecoveryTask;
-  nativeRecoveryTask = recoverMediaPlayback(failedPlayback).finally(() => {
+  const identity = mediaRecoveryIdentity(failedPlayback);
+  if (nativeRecoveryTask && nativeRecoveryIdentity === identity) {
+    return nativeRecoveryTask;
+  }
+  hidePlayerError();
+  showPlayerLoading(t('mediaResolving'));
+  const task = recoverMediaPlayback(failedPlayback);
+  nativeRecoveryTask = task;
+  nativeRecoveryIdentity = identity;
+  const clearCurrentTask = () => {
+    if (nativeRecoveryTask !== task) return;
     nativeRecoveryTask = null;
-  });
-  return nativeRecoveryTask;
+    nativeRecoveryIdentity = null;
+  };
+  task.then(clearCurrentTask, clearCurrentTask);
+  return task;
+}
+
+function mediaRecoveryIdentity(state) {
+  return `${mediaCacheKey(state?.media) || 'none'}:${state?.revision ?? 'none'}`;
 }
 
 async function recoverMediaPlayback(failedPlayback) {
   const failedRevision = failedPlayback.revision;
   const key = mediaCacheKey(failedPlayback.media);
-  return mediaRecovery.recover(key, async () => {
+  const identity = mediaRecoveryIdentity(failedPlayback);
+  return mediaRecovery.recover(identity, async () => {
     const recoveryGeneration = ++playerApplyGeneration;
     const prepared = await preparePlaybackState(failedPlayback, { force: true });
     if (
@@ -425,6 +476,14 @@ async function recoverMediaPlayback(failedPlayback) {
     mountedMediaKey = key;
     hidePlayerError();
     await adapter.retry(prepared, expectedPosition(prepared));
+    if (
+      recoveryGeneration === playerApplyGeneration
+      && playback?.revision === failedRevision
+      && mediaCacheKey(playback?.media) === key
+      && adapter === playerAdapterRouter.adapter
+    ) {
+      hidePlayerLoading();
+    }
   });
 }
 
@@ -477,12 +536,23 @@ function updateCapabilities() {
 }
 
 function showPlayerError(message) {
+  hidePlayerLoading();
   els.playerErrorMessage.textContent = message || t('toastSyncFailed');
   els.playerErrorOverlay.classList.remove('is-hidden');
 }
 
 function hidePlayerError() {
   els.playerErrorOverlay.classList.add('is-hidden');
+}
+
+function showPlayerLoading(message) {
+  if (!els.playerLoadingOverlay || !els.playerLoadingMessage) return;
+  els.playerLoadingMessage.textContent = message || t('mediaResolving');
+  els.playerLoadingOverlay.classList.remove('is-hidden');
+}
+
+function hidePlayerLoading() {
+  els.playerLoadingOverlay?.classList.add('is-hidden');
 }
 
 function expectedPosition(state = playback) {
@@ -990,6 +1060,7 @@ els.retryPlayerButton.addEventListener('click', async () => {
   if (!playback?.media) return;
   const retryGeneration = ++playerApplyGeneration;
   hidePlayerError();
+  showPlayerLoading(t('mediaResolving'));
   let adapter;
   try {
     const prepared = await preparePlaybackState(playback, { force: true });
@@ -998,6 +1069,12 @@ els.retryPlayerButton.addEventListener('click', async () => {
     adapter = playerAdapterRouter.select(prepared);
     mountedMediaKey = mediaCacheKey(prepared.media);
     await adapter.retry(prepared, expectedPosition(prepared));
+    if (
+      retryGeneration === playerApplyGeneration
+      && adapter === playerAdapterRouter.adapter
+    ) {
+      hidePlayerLoading();
+    }
   } catch (error) {
     if (retryGeneration !== playerApplyGeneration) return;
     if (adapter && adapter !== playerAdapterRouter.adapter) return;

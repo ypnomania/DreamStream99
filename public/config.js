@@ -241,6 +241,9 @@ window.WT_CONFIG = {
     allowGuestControl: 'Allow playback control',
     retryPlayer: 'Retry',
     unmuteAndSync: 'Unmute & Sync',
+    mediaResolving: 'Preparing secure video stream...',
+    mediaBuffering: 'Buffering the first video frame...',
+    mediaLoadingHint: 'The first load can take a few seconds.',
 
     ariaPlay: 'Play',
     ariaPause: 'Pause',

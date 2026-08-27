@@ -17,98 +17,121 @@ async function main() {
   let guest;
 
   try {
-  const created = await jsonRequest('/api/rooms', { method: 'POST' });
-  assert.match(created.roomId, /^[A-HJ-NP-Z2-9]{8}$/);
-  assert.equal(typeof created.hostToken, 'string');
+    const created = await jsonRequest('/api/rooms', { method: 'POST' });
+    assert.match(created.roomId, /^[A-HJ-NP-Z2-9]{8}$/);
+    assert.equal(typeof created.hostToken, 'string');
 
-  const guestCredential = await jsonRequest(`/api/rooms/${created.roomId}/join`, {
-    method: 'POST',
-    body: { nickname: 'SmokeGuest' },
-  });
-  assert.equal(typeof guestCredential.roomToken, 'string');
-
-  [host, guest] = await Promise.all([
-    Peer.connect(baseUrl, created.roomId, created.hostToken, allowedOrigin),
-    Peer.connect(baseUrl, created.roomId, guestCredential.roomToken, allowedOrigin),
-  ]);
-  await Promise.all([
-    host.request('room:join', {
+    host = await Peer.connect(baseUrl, created.roomId, created.hostToken, allowedOrigin);
+    await host.request('room:join', {
       roomId: created.roomId,
       token: created.hostToken,
       nickname: 'SmokeHost',
-    }),
-    guest.request('room:join', {
+    });
+
+    const loaded = await host.request('playback:command', {
+      action: 'load',
+      actionId: crypto.randomUUID(),
+      position: 0,
+      media,
+    });
+    assert.equal(loaded.revision, 1);
+
+    const guestCredential = await jsonRequest(`/api/rooms/${created.roomId}/join`, {
+      method: 'POST',
+      body: { nickname: 'SmokeGuest' },
+    });
+    assert.equal(typeof guestCredential.roomToken, 'string');
+
+    guest = await Peer.connect(baseUrl, created.roomId, guestCredential.roomToken, allowedOrigin);
+    const guestJoined = await guest.request('room:join', {
       roomId: created.roomId,
       token: guestCredential.roomToken,
       nickname: 'SmokeGuest',
-    }),
-  ]);
-
-  const loaded = await host.request('playback:command', {
-    action: 'load',
-    actionId: crypto.randomUUID(),
-    position: 0,
-    media,
-  });
-  assert.equal(loaded.revision, 1);
-  const guestPlayback = await guest.take((message) => message.type === 'playback:state');
-  assert.deepEqual(guestPlayback.payload.playback.media, media);
-
-  await host.request('room:permissions:update', { guestPlaybackControl: true });
-  await guest.take((message) => message.type === 'room:permissions');
-  const played = await guest.request('playback:command', {
-    action: 'play',
-    actionId: crypto.randomUUID(),
-    position: 1,
-  });
-  assert.equal(played.revision, 2);
-  await guest.request('chat:send', { body: 'production smoke check' });
-  summary.control = true;
-
-  if (!skipMedia) {
-    const grant = await jsonRequest(`/api/rooms/${created.roomId}/media-grants`, {
-      method: 'POST',
-      authorization: created.hostToken,
     });
-    assert.deepEqual(grant.media, media);
-    assert.match(grant.mediaGrant, /^mg1\./);
+    assert.deepEqual(guestJoined.snapshot.playback.media, media);
+    assert.equal(guestJoined.snapshot.playback.revision, 1);
 
-    const resolvedResponse = await fetch(new URL('/media/resolve', baseUrl), {
-      method: 'POST',
-      headers: {
-        Origin: allowedOrigin,
-        Authorization: `Bearer ${grant.mediaGrant}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ media }),
+    await host.request('room:permissions:update', { guestPlaybackControl: true });
+    await guest.take((message) => message.type === 'room:permissions');
+    const played = await guest.request('playback:command', {
+      action: 'play',
+      actionId: crypto.randomUUID(),
+      position: 1,
     });
-    const resolvedText = await resolvedResponse.text();
-    if (!resolvedResponse.ok) {
-      throw new Error(`media resolve failed (${resolvedResponse.status}): ${safeError(resolvedText)}`);
+    assert.equal(played.revision, 2);
+    const [hostPlayback, guestPlayback] = await Promise.all([
+      host.take((message) => (
+        message.type === 'playback:state' && message.payload?.playback?.revision === played.revision
+      )),
+      guest.take((message) => (
+        message.type === 'playback:state' && message.payload?.playback?.revision === played.revision
+      )),
+    ]);
+    assert.equal(hostPlayback.payload.playback.paused, false);
+    assert.deepEqual(hostPlayback.payload.playback, guestPlayback.payload.playback);
+    await guest.request('chat:send', { body: 'production smoke check' });
+    summary.control = true;
+
+    if (!skipMedia) {
+      const timingsMs = {};
+      let started = performance.now();
+      const grant = await jsonRequest(`/api/rooms/${created.roomId}/media-grants`, {
+        method: 'POST',
+        authorization: guestCredential.roomToken,
+      });
+      timingsMs.grant = roundedDuration(started);
+      assert.deepEqual(grant.media, media);
+      assert.match(grant.mediaGrant, /^mg1\./);
+
+      started = performance.now();
+      const resolvedResponse = await fetch(new URL('/media/resolve', baseUrl), {
+        method: 'POST',
+        headers: {
+          Origin: allowedOrigin,
+          Authorization: `Bearer ${grant.mediaGrant}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ media }),
+        signal: AbortSignal.timeout(60_000),
+      });
+      const resolvedText = await resolvedResponse.text();
+      timingsMs.resolve = roundedDuration(started);
+      if (!resolvedResponse.ok) {
+        throw new Error(`media resolve failed (${resolvedResponse.status}): ${safeError(resolvedText)}`);
+      }
+      assert.doesNotMatch(resolvedText, /googlevideo\.com|videoplayback/i);
+      const resolved = JSON.parse(resolvedText);
+      assert.deepEqual(resolved.media, media);
+      const stream = resolved.streams?.find((candidate) => candidate?.delivery === 'progressive');
+      assert.equal(typeof stream?.relay_url, 'string');
+      const relayUrl = new URL(`/media${stream.relay_url}`, baseUrl);
+
+      started = performance.now();
+      const head = await fetch(relayUrl, {
+        method: 'HEAD',
+        headers: { Origin: allowedOrigin },
+        signal: AbortSignal.timeout(30_000),
+      });
+      timingsMs.head = roundedDuration(started);
+      assert.equal(head.status, 200);
+      assert.equal(head.headers.get('accept-ranges'), 'bytes');
+      started = performance.now();
+      const range = await fetch(relayUrl, {
+        headers: { Origin: allowedOrigin, Range: 'bytes=0-1023' },
+        signal: AbortSignal.timeout(30_000),
+      });
+      assert.equal(range.status, 206);
+      assert.match(range.headers.get('content-range') || '', /^bytes 0-/);
+      const body = new Uint8Array(await range.arrayBuffer());
+      timingsMs.range = roundedDuration(started);
+      assert.ok(body.byteLength > 0 && body.byteLength <= 1024);
+      summary.media = {
+        title: resolved.metadata?.title || null,
+        bytes: body.byteLength,
+        contentRange: range.headers.get('content-range'),
+        timingsMs,
+      };
     }
-    assert.doesNotMatch(resolvedText, /googlevideo\.com|videoplayback/i);
-    const resolved = JSON.parse(resolvedText);
-    assert.deepEqual(resolved.media, media);
-    const stream = resolved.streams?.find((candidate) => candidate?.delivery === 'progressive');
-    assert.equal(typeof stream?.relay_url, 'string');
-    const relayUrl = new URL(`/media${stream.relay_url}`, baseUrl);
-
-    const head = await fetch(relayUrl, { method: 'HEAD', headers: { Origin: allowedOrigin } });
-    assert.equal(head.status, 200);
-    assert.equal(head.headers.get('accept-ranges'), 'bytes');
-    const range = await fetch(relayUrl, {
-      headers: { Origin: allowedOrigin, Range: 'bytes=0-1023' },
-    });
-    assert.equal(range.status, 206);
-    assert.match(range.headers.get('content-range') || '', /^bytes 0-/);
-    const body = new Uint8Array(await range.arrayBuffer());
-    assert.ok(body.byteLength > 0 && body.byteLength <= 1024);
-    summary.media = {
-      title: resolved.metadata?.title || null,
-      bytes: body.byteLength,
-      contentRange: range.headers.get('content-range'),
-    };
-  }
   } finally {
     host?.close();
     guest?.close();
@@ -125,10 +148,15 @@ async function jsonRequest(pathname, { method, body, authorization } = {}) {
     method,
     headers,
     body: body === undefined ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(15_000),
   });
   const text = await response.text();
   if (!response.ok) throw new Error(`${pathname} failed (${response.status}): ${safeError(text)}`);
   return JSON.parse(text);
+}
+
+function roundedDuration(started) {
+  return Math.round((performance.now() - started) * 10) / 10;
 }
 
 function safeError(text) {

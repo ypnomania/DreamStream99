@@ -1,9 +1,9 @@
 # VPS and GitHub Pages deployment
 
-This guide deploys the production topology used by DreamStream 99: GitHub Pages
-serves the browser application and one Linux VPS runs Caddy, Node control,
-FastAPI media, a private single-node Mihomo VLESS Reality egress, and an
-internal PO-token helper.
+This guide deploys the two-node production topology used by DreamStream 99:
+GitHub Pages serves the browser application, while one Linux VPS runs Caddy,
+Node control, FastAPI media, a private single-node Mihomo VLESS Reality egress,
+and an internal PO-token helper.
 
 ## 1. Prepare DNS and the VPS
 
@@ -54,7 +54,12 @@ Edit `.env`:
 COMPOSE_FILE=docker-compose.yml:deploy/compose.media-egress.yml
 MEDIA_EGRESS_PROXY=http://media-egress:7890
 YTDLP_PROXY=
-YTDLP_PLAYER_CLIENT=mweb
+YTDLP_PLAYER_CLIENT=web_embedded
+MEDIA_RESOLVE_CACHE_TTL_SECONDS=300
+MEDIA_RESOLVE_MAX_CACHE_ENTRIES=128
+MEDIA_RESOLVE_MAX_CONCURRENT=1
+MEDIA_RESOLVE_MAX_PENDING=8
+MEDIA_RESOLVE_TIMEOUT_SECONDS=45
 ```
 
 Use this shape for the ignored configuration and replace every angle-bracketed
@@ -114,6 +119,28 @@ docker compose run --rm --no-deps media-egress \
 ```
 
 Node and FastAPI must import the exact same secret bytes. Do not put the secret in Pages variables, Caddy, URLs, screenshots, support messages, or committed files.
+
+### Media resolution limits
+
+The defaults are deliberately conservative for a small VPS:
+
+| Setting | Default | Operational effect |
+| --- | --- | --- |
+| `MEDIA_RESOLVE_CACHE_TTL_SECONDS` | `300` | Keeps only successful yt-dlp results for five minutes |
+| `MEDIA_RESOLVE_MAX_CACHE_ENTRIES` | `128` | Applies an LRU bound to the process-local success cache |
+| `MEDIA_RESOLVE_MAX_CONCURRENT` | `1` | Allows only one expensive yt-dlp extraction at a time |
+| `MEDIA_RESOLVE_MAX_PENDING` | `8` | Bounds distinct running or queued extraction flights; overflow returns `503` |
+| `MEDIA_RESOLVE_TIMEOUT_SECONDS` | `45` | Terminates the one-shot resolver subprocess at the overall deadline |
+
+Concurrent requests for the same `MediaRef` always share one in-flight
+extraction, so a host and newly joined guest do not duplicate work. A cold
+first load normally spends several seconds resolving through YouTube and the
+configured egress; a successful cache hit avoids another extraction. Keep the
+global concurrency at `1` on a low-memory or single-vCPU VPS and raise it only
+after measuring CPU, memory, and upstream behavior. The cache is internal:
+clients still receive a fresh opaque relay capability, never a cached Google
+CDN URL. Each cache miss runs in a one-shot subprocess so timeout or shutdown
+can terminate yt-dlp without leaving a background thread consuming CPU.
 
 ## 3. Start the VPS stack
 
@@ -188,6 +215,14 @@ DREAMSTREAM_BASE_URL=https://dreamstream99.lucius7.dev npm run smoke:e2e
 
 Expected output reports `control: true`, a media title, a nonzero byte count, and a `Content-Range` beginning with `bytes 0-`. The script deliberately omits room credentials and grants from its output.
 
+Finish with a real two-browser room: load media as the host, then join from the
+invite link as a guest. Both source fields should show the same canonical
+YouTube URL derived from room `MediaRef`, both clients should visibly progress
+through resolving/buffering, and both native players should become ready. A
+cold first load may take several seconds; it must not remain as an unexplained
+black frame. Inspect neither relay capabilities nor upstream URLs during this
+check, and close or pause both players afterward to stop transfer.
+
 ## 5. Deploy GitHub Pages
 
 For a fork, edit [`.github/workflows/pages.yml`](../.github/workflows/pages.yml):
@@ -201,7 +236,10 @@ WT_MEDIA_URL: https://your-api-host.example/media
 
 Set the repository's Pages source to **GitHub Actions**, then push `main`. The workflow verifies the Node/frontend code, builds `dist/`, injects only public endpoints, and deploys the artifact.
 
-Confirm that the live `runtime-config.js` has `mode: websocket` and the intended endpoints. It must never contain `MEDIA_GRANT_SECRET`, room credentials, cookies, or upstream URLs.
+Confirm that the live `runtime-config.js` has `mode: websocket` and the intended
+endpoints. It must never contain `MEDIA_GRANT_SECRET`, room credentials,
+cookies, or upstream URLs. The guest-visible source value is reconstructed from
+the public `MediaRef`; it is not the real relay target.
 
 ## 6. YouTube cookies and Hong Kong VLESS Reality egress
 
@@ -220,11 +258,12 @@ the read-only source and its distinct private tmpfs base together:
 ```dotenv
 YTDLP_COOKIEFILE_SOURCE=/run/secrets/youtube.cookies.txt
 YTDLP_COOKIEFILE=/tmp/dreamstream-media/youtube.cookies.txt
-YTDLP_PLAYER_CLIENT=mweb
+YTDLP_PLAYER_CLIENT=web_embedded
 ```
 
 Media startup copies the source into a private `0700` directory with a stable
-`0600` base. Every resolve gives yt-dlp a unique disposable writable copy and
+`0600` base. Every cache-miss yt-dlp extraction gives its one-shot resolver
+subprocess a unique disposable writable copy and
 deletes it after `YoutubeDL.close()`. Never point `YTDLP_COOKIEFILE` at
 `/run/secrets`, where that close would fail with `EROFS`. Recreate media after
 changing either path. Never commit, paste, print,
@@ -233,7 +272,7 @@ and may trigger account challenges or suspension. Follow the complete [safe
 export, installation, verification, rotation, and revocation
 procedure](YOUTUBE_COOKIES.md). The generic code default remains yt-dlp's
 authenticated `default` preset, but this deployment uses the real, supported
-`mweb` client: acceptance requires the affected Topic/Release videos to expose
+`web_embedded` client: acceptance requires representative videos to expose
 playable Range responses through the same Hong Kong VLESS Reality egress.
 Unknown client names can be silently ignored and invalidate
 test attribution. Moving a workstation

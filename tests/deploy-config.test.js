@@ -81,7 +81,7 @@ test('deployment guidance preserves Hong Kong VLESS proxy affinity through Range
   const mediaEnv = await readFile(path.join(root, 'media', '.env.example'), 'utf8');
   assert.match(deployEnv, /^COMPOSE_FILE=docker-compose\.yml:deploy\/compose\.media-egress\.yml$/m);
   assert.match(deployEnv, /^MEDIA_EGRESS_PROXY=http:\/\/media-egress:7890$/m);
-  assert.match(deployEnv, /^YTDLP_PLAYER_CLIENT=mweb$/m);
+  assert.match(deployEnv, /^YTDLP_PLAYER_CLIENT=web_embedded$/m);
   assert.match(mediaEnv, /^MEDIA_EGRESS_PROXY=$/m);
   for (const [filename, contents] of [
     [path.join('deploy', '.env.example'), deployEnv],
