@@ -29,8 +29,9 @@ cookie store. From a trusted DreamStream checkout, set a restrictive umask and
 ask yt-dlp to write Netscape format directly into the ignored secret directory:
 
 The isolated browser session must be established through the exact configured
-Malaysian media proxy and public exit IP that will run yt-dlp resolution and
-relay. Do not expose its credentials in shell history or documentation. In
+Mihomo HTTP proxy and Malaysian SSH public exit that will run yt-dlp resolution,
+relay, and 403 refreshes. Do not expose its SSH destination, account, key,
+host-key pins, or public address in shell history or documentation. In
 production, the source parsed locally as `authenticated=true`, but the first VPS request
 left the runtime jar unauthenticated. Re-exporting that same local session does
 not fix the binding; create a new isolated session through that same configured
@@ -68,15 +69,16 @@ final file with the media container's numeric uid/gid and read-only mode. Numeri
 ownership avoids dependence on host user names.
 
 ```bash
+export DREAMSTREAM_DEPLOY_HOST='your-vps.example'
 scp deploy/secrets/media/youtube.cookies.txt \
-  lucius7@your-vps.example:/tmp/dreamstream-youtube.cookies.incoming
+  "${DREAMSTREAM_DEPLOY_HOST}:/tmp/dreamstream-youtube.cookies.incoming"
 
-ssh lucius7@your-vps.example '
+ssh "$DREAMSTREAM_DEPLOY_HOST" '
   sudo install -d -o 10001 -g 10001 -m 0700 \
-    /home/lucius7/dreamstream99/deploy/secrets/media
+    /srv/dreamstream99/deploy/secrets/media
   sudo install -o 10001 -g 10001 -m 0400 \
     /tmp/dreamstream-youtube.cookies.incoming \
-    /home/lucius7/dreamstream99/deploy/secrets/media/youtube.cookies.txt
+    /srv/dreamstream99/deploy/secrets/media/youtube.cookies.txt
   sudo rm -f /tmp/dreamstream-youtube.cookies.incoming
 '
 ```
@@ -88,22 +90,24 @@ without making the cookie world-readable:
 
 ```bash
 scp -p deploy/secrets/media/youtube.cookies.txt \
-  lucius7@your-vps.example:/home/lucius7/.dreamstream-youtube.cookies.incoming
+  "${DREAMSTREAM_DEPLOY_HOST}:/tmp/dreamstream-youtube.cookies.incoming"
 
-ssh lucius7@your-vps.example '
-  chmod 0600 /home/lucius7/.dreamstream-youtube.cookies.incoming
+ssh "$DREAMSTREAM_DEPLOY_HOST" '
+  chmod 0600 /tmp/dreamstream-youtube.cookies.incoming
   docker run --rm --user 0:0 --entrypoint sh \
-    -v /home/lucius7/.dreamstream-youtube.cookies.incoming:/incoming:ro \
-    -v /home/lucius7/dreamstream99/deploy/secrets/media:/secrets \
+    -v /tmp/dreamstream-youtube.cookies.incoming:/incoming:ro \
+    -v /srv/dreamstream99/deploy/secrets/media:/secrets \
     dreamstream99-media \
     -c "install -o 10001 -g 10001 -m 0400 \
       /incoming /secrets/youtube.cookies.txt"
-  rm -f /home/lucius7/.dreamstream-youtube.cookies.incoming
+  rm -f /tmp/dreamstream-youtube.cookies.incoming
 '
 ```
 
-The staging file stays in the SSH user's home directory because the final
-secret directory may already be owned by uid/gid `10001` with mode `0700`.
+The SSH client configuration selects the deployment account; this guide does
+not embed a real account name. The `0600` staging file stays outside the final
+secret directory because that directory may already be owned by uid/gid
+`10001` with mode `0700`.
 
 Set the read-only source and a distinct private tmpfs working path together in
 the protected root `.env`:
@@ -116,7 +120,11 @@ YTDLP_PLAYER_CLIENT=mweb
 ```
 
 The Compose mount exposes only `deploy/secrets/media/` read-only at
-`/run/secrets`; the media container cannot read the sibling egress secret.
+`/run/secrets`; the media container cannot read the sibling Mihomo
+configuration or `media-egress-ssh-key`. Only the non-root Mihomo container
+receives that Ed25519 key at `/run/secrets/media-egress-ssh-key`, mode `0400`,
+and validates non-empty SSH host-key pins. The host-network socat relay receives
+no authentication secret.
 `YTDLP_COOKIEFILE_SOURCE` names that immutable secret; startup copies it into a
 private `0700` tmpfs directory as a stable `0600` runtime base. Each resolve
 creates its own disposable `0600` jar from that base, lets yt-dlp update it, and
@@ -165,7 +173,7 @@ DREAMSTREAM_BASE_URL=https://dreamstream.lucius7.dev npm run smoke:e2e
 
 Health alone validates process readiness, not whether YouTube accepts the
 session. The generic code default remains yt-dlp's authenticated `default`
-preset, but production uses the real `mweb` client with the Malaysian sidecar:
+preset, but production uses the real `mweb` client with the Malaysian SSH egress:
 the affected Topic/Release probes exposed no progressive stream under
 `default`, while `mweb` returned playable byte ranges. An unknown client name
 may be silently ignored and fall back to defaults, invalidating attribution. A
@@ -175,15 +183,16 @@ request to return `206`. Never add `--verbose`,
 raw headers, cookies, relay capability URLs, or yt-dlp debug dumps to production
 logs.
 
-Treat this smoke test as a proxy-affinity acceptance test. Resolution, relay
+Treat this smoke test as an SSH-exit-affinity acceptance test. Resolution, relay
 `HEAD`, the first relay range read, and any 403 refresh must all use the same
-`MEDIA_EGRESS_PROXY` value and public exit IP used to create the cookie session.
+`MEDIA_EGRESS_PROXY` value and exact SSH public exit used to create the cookie
+session.
 `YTDLP_PROXY` is only a deprecated alias and must remain empty when the new
 setting is used. A
 successful resolve is not proof of playback: require `Range: bytes=0-1023` to
 return `206 Partial Content`, a valid `Content-Range`, and a non-empty body. If
-the proxy or public exit IP changes, create a fresh isolated session, rotate the
-cookie secret, and repeat the test.
+the SSH public exit changes, create a fresh isolated session, rotate the cookie
+secret, and repeat the test.
 
 ## Rotate and revoke
 

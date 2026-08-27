@@ -4,11 +4,27 @@ on:
   push:
     paths:
       - 'media/**'
+      - 'docker-compose.yml'
+      - 'deploy/**'
+      - 'README.md'
+      - 'docs/DEPLOYMENT.md'
+      - 'docs/OPERATIONS.md'
+      - 'docs/YOUTUBE_COOKIES.md'
+      - 'tests/deploy-config.test.js'
+      - 'tests/deployment-config.test.js'
       - 'tests/fixtures/media-grant-v1.json'
       - '.github/workflows/media-ci.yml'
   pull_request:
     paths:
       - 'media/**'
+      - 'docker-compose.yml'
+      - 'deploy/**'
+      - 'README.md'
+      - 'docs/DEPLOYMENT.md'
+      - 'docs/OPERATIONS.md'
+      - 'docs/YOUTUBE_COOKIES.md'
+      - 'tests/deploy-config.test.js'
+      - 'tests/deployment-config.test.js'
       - 'tests/fixtures/media-grant-v1.json'
       - '.github/workflows/media-ci.yml'
 
@@ -27,6 +43,14 @@ jobs:
         with:
           python-version: '3.13'
 
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Test deployment contracts
+        run: node --test tests/deploy-config.test.js tests/deployment-config.test.js
+
       - name: Install and test
         env:
           MEDIA_GRANT_SECRET: ci-media-grant-secret-at-least-32-bytes
@@ -36,6 +60,19 @@ jobs:
 
       - name: Build Python 3.13 image
         run: docker build --tag dreamstream-media:test media
+
+      - name: Validate and build media egress relay
+        env:
+          MEDIA_GRANT_SECRET: ci-media-grant-secret-at-least-32-bytes
+          SSH_EGRESS_IPV6: 2001:db8::1
+        run: |
+          docker compose \
+            --file docker-compose.yml \
+            --file deploy/compose.media-egress.yml \
+            config --quiet
+          docker build \
+            --tag dreamstream-media-egress-relay:test \
+            --file deploy/media-egress-relay.Dockerfile .
 
       - name: Smoke-test image health
         run: |

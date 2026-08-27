@@ -83,13 +83,29 @@ plugin at build time with `--build-arg YTDLP_PLUGIN_PACKAGE=<package>`.
 The root Compose file enables the pinned open-source bgutil provider and plugin
 by default as an internal-only Media Plane sidecar; it publishes no host port.
 
+In production, `MEDIA_EGRESS_PROXY` remains the ordinary internal HTTP URI
+`http://media-egress:7890`; this application does not hold SSH credentials.
+Non-root Mihomo carries that traffic through one dedicated non-root SSH account
+using an Ed25519 key and non-empty host-key pins. A separate non-root
+host-network socat relay binds TCP4 only to the Docker bridge gateway at
+`SSH_EGRESS_RELAY_BIND:SSH_EGRESS_RELAY_PORT` and forwards TCP6 to the
+IPv6-only `SSH_EGRESS_IPV6:SSH_EGRESS_PORT` target. Port `35201` is the private
+bridge relay; the remote SSH service remains port `22`. Neither is published.
+
+The media container mounts only its cookie-secret directory. It cannot read
+`media-egress.yaml` or `media-egress-ssh-key`; only Mihomo receives the key at
+`/run/secrets/media-egress-ssh-key`, mode `0400`. Resolution, relay `HEAD` and
+Range reads, and the retry after an upstream 403 all use the same
+`MEDIA_EGRESS_PROXY` and exact Malaysian SSH public exit. Production fails
+closed instead of falling back to direct VPS egress.
+
 The image includes the matching `yt-dlp-ejs` package and an isolated Node 22
 runtime for YouTube's current JavaScript challenges. Node is explicitly enabled
 through yt-dlp's `js_runtimes` option; runtime EJS downloads are not enabled.
 `yt-dlp` is pinned to 2026.08.19, whose default dependency group pins
 `yt-dlp-ejs` 0.8.0. The generic default is yt-dlp's special `default` preset,
 which selects its authenticated client combination when cookies are present.
-The deployed Malaysian-egress profile explicitly uses the real `mweb` client:
+The deployed Malaysian SSH-egress profile explicitly uses the real `mweb` client:
 it exposed progressive streams and returned `206` for the affected
 Topic/Release probes where `default` exposed none. The special preset is
 intentionally not an `INNERTUBE_CLIENTS` key; every concrete
@@ -120,7 +136,8 @@ Third-party licenses, including the copyleft obligations introduced by the
 default yt-dlp extras and bgutil provider, are summarized in
 `media/THIRD_PARTY_NOTICES.md` and retained inside the image. If
 `MEDIA_EGRESS_PROXY` is enabled, ensure the PO provider uses compatible
-egress/session settings too;
+egress/session settings too and do not split resolution, relay, or 403 refresh
+across a different public exit;
 tokens generated through a different network identity may still produce 403s.
 
 ## Tests

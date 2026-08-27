@@ -1,4 +1,42 @@
 services:
+  media-egress-relay:
+    build:
+      context: .
+      dockerfile: deploy/media-egress-relay.Dockerfile
+    restart: unless-stopped
+    init: true
+    user: "10001:10001"
+    environment:
+      HOME: /tmp
+    command:
+      - TCP4-LISTEN:${SSH_EGRESS_RELAY_PORT:-35201},bind=${SSH_EGRESS_RELAY_BIND:-172.17.0.1},reuseaddr,fork
+      - TCP6:[${SSH_EGRESS_IPV6:?set SSH_EGRESS_IPV6 in .env}]:${SSH_EGRESS_PORT:-22},connect-timeout=10
+    # The relay handles the private SSH endpoint. Do not retain connection logs.
+    logging:
+      driver: "none"
+    network_mode: host
+    pids_limit: 64
+    read_only: true
+    tmpfs:
+      - /tmp:size=4m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD
+        - nc
+        - -z
+        - -w
+        - "5"
+        - ${SSH_EGRESS_RELAY_BIND:-172.17.0.1}
+        - ${SSH_EGRESS_RELAY_PORT:-35201}
+      interval: 30s
+      timeout: 5s
+      start_period: 5s
+      retries: 3
+
   media-egress:
     image: metacubex/mihomo:v1.19.29@sha256:e1d7dadaa9368a52d420d65007e0e0d87cb148d292faa67326eda3fef5757f59
     restart: unless-stopped
@@ -6,6 +44,7 @@ services:
     user: "10001:10001"
     environment:
       HOME: /tmp
+      SAFE_PATHS: /run/secrets
     command:
       - -f
       - /run/secrets/media-egress.yaml
@@ -16,7 +55,18 @@ services:
     expose:
       - "7890"
     volumes:
-      - ./deploy/secrets/egress/media-egress.yaml:/run/secrets/media-egress.yaml:ro
+      - type: bind
+        source: ./deploy/secrets/egress/media-egress.yaml
+        target: /run/secrets/media-egress.yaml
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./deploy/secrets/egress/media-egress-ssh-key
+        target: /run/secrets/media-egress-ssh-key
+        read_only: true
+        bind:
+          create_host_path: false
     networks:
       - backend
     read_only: true
@@ -26,11 +76,18 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
+    depends_on:
+      media-egress-relay:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "nc", "-z", "127.0.0.1", "7890"]
+      test:
+        - CMD-SHELL
+        - >-
+          http_proxy=http://127.0.0.1:7890
+          wget -qO /dev/null -T 15 http://cp.cloudflare.com/generate_204
       interval: 30s
-      timeout: 5s
-      start_period: 5s
+      timeout: 20s
+      start_period: 10s
       retries: 3
 
   media:
