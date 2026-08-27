@@ -10,6 +10,7 @@ from media_service.config import (
     CONCRETE_YOUTUBE_PLAYER_CLIENTS,
     ConfigurationError,
     DEFAULT_YOUTUBE_PLAYER_CLIENT,
+    MediaEgressProxySettings,
     MediaGrantSettings,
     MediaOriginSettings,
     RelayRefreshSettings,
@@ -58,6 +59,62 @@ def test_yt_dlp_options_always_install_the_safe_logger():
     options = YtDlpSettings.from_env({}).youtube_dl_options()
 
     assert isinstance(options["logger"], SafeYtDlpLogger)
+
+
+def test_authenticated_media_egress_proxy_is_forwarded_to_yt_dlp_exactly():
+    proxy = "https://relay-user:dummy-password@proxy.example:8443"
+
+    options = YtDlpSettings.from_env(
+        {"MEDIA_EGRESS_PROXY": proxy}
+    ).youtube_dl_options()
+
+    assert options["proxy"] == proxy
+
+
+def test_yt_dlp_explicitly_disables_ambient_proxy_when_unconfigured():
+    options = YtDlpSettings.from_env({}).youtube_dl_options()
+
+    assert options["proxy"] == ""
+
+
+def test_legacy_ytdlp_proxy_uses_the_same_validated_egress_setting():
+    proxy = "http://legacy-user:dummy-password@proxy.example:8080"
+
+    assert MediaEgressProxySettings.from_env(
+        {"YTDLP_PROXY": proxy}
+    ).proxy == proxy
+
+
+@pytest.mark.parametrize(
+    "proxy",
+    [
+        "socks5://proxy.example:1080",
+        "http://",
+        "http://proxy.example/private-path",
+        "http://proxy.example?credential=secret",
+        "http://proxy.example#secret",
+        "http://proxy.example:99999",
+        " http://proxy.example:8080",
+    ],
+)
+def test_invalid_media_egress_proxy_is_rejected_without_echoing_value(proxy):
+    with pytest.raises(ConfigurationError) as captured:
+        MediaEgressProxySettings.from_env({"MEDIA_EGRESS_PROXY": proxy})
+
+    assert proxy not in str(captured.value)
+
+
+def test_conflicting_proxy_aliases_fail_without_leaking_credentials():
+    with pytest.raises(ConfigurationError) as captured:
+        MediaEgressProxySettings.from_env(
+            {
+                "MEDIA_EGRESS_PROXY": "http://user:first-secret@one.example:8080",
+                "YTDLP_PROXY": "http://user:second-secret@two.example:8080",
+            }
+        )
+
+    assert "first-secret" not in str(captured.value)
+    assert "second-secret" not in str(captured.value)
 
 
 @pytest.mark.parametrize(

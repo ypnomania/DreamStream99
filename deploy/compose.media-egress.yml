@@ -1,0 +1,41 @@
+services:
+  media-egress:
+    image: metacubex/mihomo:v1.19.29@sha256:e1d7dadaa9368a52d420d65007e0e0d87cb148d292faa67326eda3fef5757f59
+    restart: unless-stopped
+    init: true
+    user: "10001:10001"
+    environment:
+      HOME: /tmp
+    command:
+      - -f
+      - /run/secrets/media-egress.yaml
+    # Proxy destinations and upstream node addresses are sensitive operational
+    # data. Do not retain this sidecar's connection logs.
+    logging:
+      driver: "none"
+    expose:
+      - "7890"
+    volumes:
+      - ./deploy/secrets/egress/media-egress.yaml:/run/secrets/media-egress.yaml:ro
+    networks:
+      - backend
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "7890"]
+      interval: 30s
+      timeout: 5s
+      start_period: 5s
+      retries: 3
+
+  media:
+    environment:
+      MEDIA_EGRESS_PROXY: ${MEDIA_EGRESS_PROXY:-http://media-egress:7890}
+    depends_on:
+      media-egress:
+        condition: service_healthy

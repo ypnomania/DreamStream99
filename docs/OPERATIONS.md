@@ -14,7 +14,10 @@ curl --fail https://dreamstream.lucius7.dev/media/healthz
 Healthy containers do not prove YouTube extraction or Range delivery. Run the public smoke test after deployment, dependency changes, egress changes, or a Caddy edit:
 
 ```bash
-DREAMSTREAM_BASE_URL=https://dreamstream.lucius7.dev npm run smoke:e2e
+for media_id in _5GDQOm1wvw GIrBSG7RR1E 9bQmwjT-1mw; do
+  DREAMSTREAM_BASE_URL=https://dreamstream.lucius7.dev \
+  DREAMSTREAM_MEDIA_ID="$media_id" npm run smoke:e2e
+done
 ```
 
 The PO-token sidecar's Docker logging is disabled because the upstream process prints generated token material. Use its container health and media-service outcomes rather than enabling persistent verbose logs in production.
@@ -32,7 +35,7 @@ The PO-token sidecar's Docker logging is disabled because the upstream process p
 npm ci
 npm run verify
 docker compose build --pull control media
-docker compose up -d control media pot-provider
+docker compose up -d control media pot-provider media-egress
 docker compose ps
 ```
 
@@ -44,6 +47,7 @@ For a dependency-only media rebuild, verify Node, EJS, yt-dlp, and the provider 
 | --- | --- |
 | Restart Caddy | Short reconnect; control rooms and relay sessions remain |
 | Restart PO provider | In-flight/future resolves may fail briefly; existing relay sessions remain |
+| Restart media egress | In-flight resolves/relays fail; signed URLs must be refreshed after the same exit returns |
 | Restart media | All opaque relay capabilities disappear; browsers must resolve again |
 | Restart control | All rooms, messages, memberships, and guest credentials disappear |
 | Rotate HMAC secret | Existing grants become invalid; restart control and media with the new identical value |
@@ -62,12 +66,21 @@ If the browser still fails:
 
 1. Check media logs for a generic resolve/refresh failure; never add logging of raw URLs, cookies, headers, or tokens.
 2. Confirm `pot-provider` and `media` are healthy.
-3. Confirm media sees Node 22, `yt-dlp-ejs`, the bgutil plugin, and `player_client=web`.
+3. Confirm media sees Node 22, `yt-dlp-ejs`, the bgutil plugin,
+   `YTDLP_PLAYER_CLIENT=mweb`, and
+   `MEDIA_EGRESS_PROXY=http://media-egress:7890` without printing any secret
+   sidecar fields.
 4. Re-run the smoke test with a known public progressive video.
 5. Test whether the VPS egress is being challenged or blocked.
 6. Update yt-dlp/EJS/provider together and rerun the Python suite.
 7. If needed, supply a protected cookie file using the [dedicated-account
    procedure](YOUTUBE_COOKIES.md), or use an affinity-preserving proxy.
+
+For production, that route is the exact configured Malaysian proxy and public
+exit IP—not merely another address in Malaysia. Cookie creation/export, yt-dlp
+resolution, relay byte reads, and 403 refreshes must remain on it. Request the
+public relay with `Range: bytes=0-1023` and require `206 Partial Content`, a valid
+`Content-Range`, and a non-empty body.
 
 The relay retries only once and cools down a failed generation. Repeatedly hammering the endpoint will not repair an extractor or egress problem.
 
@@ -108,9 +121,28 @@ Rotation is a coordinated, room-disrupting operation:
 
 Do not attempt a rolling rotation with different secrets; Node-issued grants would fail Python verification.
 
+## Malaysian media-egress lifecycle
+
+`deploy/secrets/egress/media-egress.yaml` is a live proxy credential. Keep it owned by
+`10001:10001` with mode `0400`; the Compose overlay mounts it read-only into a
+non-root Mihomo container with no host port and no retained Docker logs. The
+media service reaches only `http://media-egress:7890` on the private bridge.
+
+- Confirm `docker compose ps media-egress` is healthy and that the media
+  container's proxied Cloudflare trace reports only `loc=MY`; do not print the
+  exit IP or node fields in routine logs.
+- To rotate, validate a new minimal configuration in a temporary container,
+  install it atomically with the same ownership/mode, then recreate
+  `media-egress` and `media` together.
+- An exit-IP change invalidates the Cookie/IP affinity and existing signed
+  GoogleVideo URLs. Create a new isolated browser session through the new exact
+  exit, rotate the cookie, and rerun all target Range smokes.
+- If the sidecar is unavailable, fail closed. Do not silently remove
+  `MEDIA_EGRESS_PROXY` and fall back to the German VPS address.
+
 ## YouTube cookie lifecycle
 
-Treat `deploy/secrets/youtube.cookies.txt` as a revocable account credential,
+Treat `deploy/secrets/media/youtube.cookies.txt` as a revocable account credential,
 not ordinary configuration. It must remain owned by numeric uid/gid
 `10001:10001`, mode `0400`, and mounted read-only as
 `/run/secrets/youtube.cookies.txt`. Configure that path as
@@ -122,8 +154,8 @@ mounted secret or the stable runtime base.
 
 - Verify source metadata/header plus the `0700` runtime directory and `0600`
   working copy without printing cookie rows.
-- Rotate with a brand-new incognito/private session through the same VPS egress
-  (for example, an operator-controlled VPS SOCKS5 endpoint or SSH tunnel). Log
+- Rotate with a brand-new incognito/private session through the exact configured
+  Malaysian proxy and public exit IP used by resolution and relay. Log
   in, open a blank tab, close all YouTube tabs, export, then immediately close
   the entire private session and never reopen it. Stage the export, install it
   with the same ownership/mode, recreate only `media`, and immediately run the
@@ -138,15 +170,18 @@ mounted secret or the stable runtime base.
 Use the commands and account-safety checklist in [YouTube cookie
 operations](YOUTUBE_COOKIES.md). Cookie rotation recreates media and therefore
 invalidates existing relay capabilities; browser recovery must resolve again.
-Keep `YTDLP_PLAYER_CLIENT=default`, yt-dlp's official special preset for the
-authenticated default client set. A cookie exported under a different network
+This deployment keeps `YTDLP_PLAYER_CLIENT=mweb`: the three production
+Topic/Release probes exposed progressive streams with this real client and the
+Malaysian sidecar, while `default` exposed none. A cookie exported under a different network
 egress may be rotated into a logged-out session after reaching the VPS; create
-the replacement isolated browser session through the same VPS egress. After
+the replacement isolated browser session through the same configured Malaysian
+proxy and public exit IP used by resolution, relay, and refreshes. After
 rotation, run the full public smoke
 test and require its real relay `Range: bytes=0-1023` request to return `206`.
 A healthy process or a successful format 18 resolve alone does not validate the
-cookie and player-client combination; `mweb` has produced a subsequent `403`
-from GoogleVideo in production.
+cookie and player-client combination. `mweb` produced GoogleVideo `403` while
+resolution and relay were not using the working Malaysian route; it is accepted
+only after the same exit returns a real public `206` Range response.
 
 ## Caddy changes and rollback
 

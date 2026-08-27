@@ -148,6 +148,52 @@ def _positive_int(environ: Mapping[str, str], name: str, default: int) -> int:
     return value
 
 
+def _validated_http_proxy(value: str) -> str:
+    error = "media egress proxy must be one valid HTTP(S) proxy URL"
+    if (
+        not value
+        or len(value) > 2_048
+        or any(ord(character) < 0x21 or ord(character) > 0x7E for character in value)
+    ):
+        raise ConfigurationError(error)
+    try:
+        parsed = urlsplit(value)
+        parsed.port
+    except ValueError as exc:
+        raise ConfigurationError(error) from exc
+    if (
+        parsed.scheme not in {"http", "https"}
+        or parsed.hostname is None
+        or parsed.path not in {"", "/"}
+        or parsed.query
+        or parsed.fragment
+        or parsed.username == ""
+        or (parsed.password is not None and parsed.username is None)
+    ):
+        raise ConfigurationError(error)
+    return value
+
+
+@dataclass(frozen=True, slots=True)
+class MediaEgressProxySettings:
+    proxy: str | None = None
+
+    @classmethod
+    def from_env(
+        cls,
+        environ: Mapping[str, str] | None = None,
+    ) -> "MediaEgressProxySettings":
+        source = os.environ if environ is None else environ
+        preferred = source.get("MEDIA_EGRESS_PROXY") or None
+        legacy = source.get("YTDLP_PROXY") or None
+        if preferred is not None and legacy is not None and preferred != legacy:
+            raise ConfigurationError(
+                "MEDIA_EGRESS_PROXY and YTDLP_PROXY must match when both are set"
+            )
+        selected = preferred or legacy
+        return cls(proxy=_validated_http_proxy(selected) if selected else None)
+
+
 def _provider_extractor_args(spec: str) -> dict[str, dict[str, list[str]]]:
     """Parse yt-dlp's documented ``KEY:ARGS`` syntax for a POT provider.
 
@@ -216,7 +262,7 @@ class YtDlpSettings:
             cookiefile=_optional_env(source, "YTDLP_COOKIEFILE"),
             po_token_provider=_optional_env(source, "YTDLP_PO_TOKEN_PROVIDER"),
             player_client=player_client,
-            proxy=_optional_env(source, "YTDLP_PROXY"),
+            proxy=MediaEgressProxySettings.from_env(source).proxy,
             socket_timeout=_positive_float(source, "YTDLP_SOCKET_TIMEOUT", 20.0),
         )
 
@@ -234,8 +280,9 @@ class YtDlpSettings:
 
         if self.cookiefile:
             options["cookiefile"] = self.cookiefile
-        if self.proxy:
-            options["proxy"] = self.proxy
+        # An empty value is yt-dlp's documented direct-connection sentinel;
+        # this prevents ambient HTTP_PROXY variables from splitting egress.
+        options["proxy"] = self.proxy or ""
         extractor_args: dict[str, dict[str, list[str]]] = {
             "youtube": {"player_client": [self.player_client]},
         }

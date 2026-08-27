@@ -1,6 +1,9 @@
 # VPS and GitHub Pages deployment
 
-This guide deploys the production topology used by DreamStream 99: GitHub Pages serves the browser application and one Linux VPS runs Caddy, Node control, FastAPI media, and an internal PO-token helper.
+This guide deploys the production topology used by DreamStream 99: GitHub Pages
+serves the browser application and one Linux VPS runs Caddy, Node control,
+FastAPI media, a private Malaysian Mihomo egress, and an internal PO-token
+helper.
 
 ## 1. Prepare DNS and the VPS
 
@@ -34,6 +37,27 @@ Edit `.env`:
 - Set `ALLOWED_ORIGIN` to the exact Pages origin, not the full repository URL. For `https://username.github.io/repository/`, the Origin is `https://username.github.io`.
 - If the default loopback ports conflict, change only `CONTROL_PORT` and
   `MEDIA_PORT`; Compose always keeps both application listeners on `127.0.0.1`.
+- Install a reviewed, minimal Mihomo configuration containing one trusted
+  Malaysian node at `deploy/secrets/egress/media-egress.yaml`. Do not copy a complete
+  desktop profile with unrelated nodes, controller secrets, or LAN listeners.
+- Add these production values:
+
+```dotenv
+COMPOSE_FILE=docker-compose.yml:deploy/compose.media-egress.yml
+MEDIA_EGRESS_PROXY=http://media-egress:7890
+YTDLP_PROXY=
+YTDLP_PLAYER_CLIENT=mweb
+```
+
+The sidecar secret is ignored by Git. Keep it readable only by the unprivileged
+container uid/gid used by this stack:
+
+```bash
+sudo install -d -o 10001 -g 10001 -m 0700 deploy/secrets/egress
+sudo install -o 10001 -g 10001 -m 0400 \
+  /trusted/path/media-egress.yaml \
+  deploy/secrets/egress/media-egress.yaml
+```
 
 Protect the file:
 
@@ -58,10 +82,10 @@ The gateway waits for healthy control and media services. Caddy obtains and rene
 
 ### Option B: an existing host Caddy
 
-Start the three application services:
+Start the application services and the private egress sidecar:
 
 ```bash
-docker compose up -d --build control media pot-provider
+docker compose up -d --build control media pot-provider media-egress
 docker compose ps
 ```
 
@@ -125,7 +149,7 @@ Set the repository's Pages source to **GitHub Actions**, then push `main`. The w
 
 Confirm that the live `runtime-config.js` has `mode: websocket` and the intended endpoints. It must never contain `MEDIA_GRANT_SECRET`, room credentials, cookies, or upstream URLs.
 
-## 6. Optional YouTube cookies and proxy
+## 6. YouTube cookies and Malaysian media egress
 
 The default stack includes the pinned bgutil PO-token provider and its yt-dlp plugin. The media image also contains Node 22 and `yt-dlp-ejs`, which are used for YouTube's JavaScript challenges. These mechanisms improve compatibility but do not guarantee every video or egress address will work.
 
@@ -133,7 +157,7 @@ If cookies are required, use only a dedicated low-value account and export a
 Netscape-format file into:
 
 ```text
-deploy/secrets/youtube.cookies.txt
+deploy/secrets/media/youtube.cookies.txt
 ```
 
 Install it on the VPS as numeric uid/gid `10001:10001` with mode `0400`. Enable
@@ -142,7 +166,7 @@ the read-only source and its distinct private tmpfs base together:
 ```dotenv
 YTDLP_COOKIEFILE_SOURCE=/run/secrets/youtube.cookies.txt
 YTDLP_COOKIEFILE=/tmp/dreamstream-media/youtube.cookies.txt
-YTDLP_PLAYER_CLIENT=default
+YTDLP_PLAYER_CLIENT=mweb
 ```
 
 Media startup copies the source into a private `0700` directory with a stable
@@ -153,18 +177,64 @@ changing either path. Never commit, paste, print,
 screenshot, or add the file to an image or log. Cookies can expose the account
 and may trigger account challenges or suspension. Follow the complete [safe
 export, installation, verification, rotation, and revocation
-procedure](YOUTUBE_COOKIES.md). Keep `YTDLP_PLAYER_CLIENT=default`; this is
-yt-dlp's official special preset for its authenticated default client set, not
-an arbitrary client name. Explicit `tv` failed to resolve even a known public
-video with the fresh cookie, while unknown client names can be silently ignored
-and fall back to defaults, invalidating attribution. Moving a workstation
+procedure](YOUTUBE_COOKIES.md). The generic code default remains yt-dlp's
+authenticated `default` preset, but this deployment uses the real, supported
+`mweb` client: the affected Topic/Release videos exposed no progressive stream
+under `default`, while `mweb` through the same Malaysian exit returned playable
+Range responses. Unknown client names can be silently ignored and invalidate
+test attribution. Moving a workstation
 cookie to a different VPS egress may also cause YouTube to rotate it into a
 logged-out session; establish a fresh isolated browser session through the same
 VPS egress before exporting. Acceptance
 must therefore include the smoke test's real relay `Range: bytes=0-1023`
-request and a `206` response. A proxy can be configured with
-`YTDLP_PROXY`; the same proxy is used for metadata and byte relay so signed URL
-affinity is preserved.
+request and a `206` response. Configure the one validated proxy with
+`MEDIA_EGRESS_PROXY`; `YTDLP_PROXY` is retained only as a deprecated alias. If
+both are present they must match exactly, and the service refuses to start on a
+conflict. The resolver and relay explicitly ignore ambient proxy environment
+variables, preventing an unnoticed split exit.
+
+### Malaysian media-egress invariant
+
+Production media traffic uses a Malaysian exit proxy. Store its real URI only in
+the protected sidecar configuration or root `.env`; never commit proxy hosts,
+usernames, passwords, UUIDs, or tokens. Cookie creation/export, yt-dlp
+resolution, relay byte reads, and every
+refresh after an upstream 403 must use the exact same configured proxy and public
+exit IP. A country label alone is insufficient: do not mix one Malaysian address
+for cookies with direct VPS egress or another address for resolution or relay.
+If the proxy or public exit IP changes, create a fresh isolated cookie session.
+
+Acceptance must exercise the public Caddy path end to end: call `/media/resolve`,
+then request the returned relay URL with `Range: bytes=0-1023`. Require `206
+Partial Content`, a `Content-Range: bytes 0-...` header, and a non-empty body no
+larger than 1024 bytes. Health, resolve, or `HEAD` success alone is insufficient.
+
+Verify the running sidecar from inside the media network without printing its
+address or credentials:
+
+```bash
+docker compose exec -T media python - <<'PY'
+import os
+import httpx
+
+proxy = os.environ['MEDIA_EGRESS_PROXY']
+with httpx.Client(proxy=proxy, trust_env=False, timeout=20) as client:
+    trace = client.get('https://www.cloudflare.com/cdn-cgi/trace').text
+country = dict(line.split('=', 1) for line in trace.splitlines() if '=' in line).get('loc')
+assert country == 'MY', country
+print('media_egress_country=MY')
+PY
+```
+
+Then run the public smoke against the actual affected videos, one at a time:
+
+```bash
+for media_id in _5GDQOm1wvw GIrBSG7RR1E 9bQmwjT-1mw; do
+  DREAMSTREAM_BASE_URL=https://dreamstream.lucius7.dev \
+  DREAMSTREAM_MEDIA_ID="$media_id" \
+    npm run smoke:e2e
+done
+```
 
 Current upstream guidance:
 

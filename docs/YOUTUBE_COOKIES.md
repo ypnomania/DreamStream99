@@ -28,22 +28,22 @@ YouTube tab. Keep only the blank private tab open while exporting the browser's
 cookie store. From a trusted DreamStream checkout, set a restrictive umask and
 ask yt-dlp to write Netscape format directly into the ignored secret directory:
 
-The isolated browser session should be established through the same VPS egress
-that will run yt-dlp—for example, by configuring that browser profile to use a
-VPS SOCKS5 endpoint or an SSH tunnel that the operator controls. In production,
-the source parsed locally as `authenticated=true`, but the first VPS request
+The isolated browser session must be established through the exact configured
+Malaysian media proxy and public exit IP that will run yt-dlp resolution and
+relay. Do not expose its credentials in shell history or documentation. In
+production, the source parsed locally as `authenticated=true`, but the first VPS request
 left the runtime jar unauthenticated. Re-exporting that same local session does
-not fix the binding; create a new isolated session through the VPS egress and
-do not change egress before validation. Immediately after export, close the
-entire private session and never reopen it: later browser use can rotate the
-cookies installed on the VPS.
+not fix the binding; create a new isolated session through that same configured
+proxy and do not change its public exit before validation. Immediately after
+export, close the entire private session and never reopen it: later browser use
+can rotate the cookies installed on the VPS.
 
 ```bash
 umask 077
-mkdir -p deploy/secrets
+mkdir -p deploy/secrets/media
 yt-dlp \
   --cookies-from-browser 'firefox:/absolute/path/to/the/dedicated/profile' \
-  --cookies deploy/secrets/youtube.cookies.txt \
+  --cookies deploy/secrets/media/youtube.cookies.txt \
   --skip-download \
   'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
 ```
@@ -53,8 +53,8 @@ The resulting file must start with the Netscape cookie-file header. Verify only
 its format and permissions—never print its cookie rows:
 
 ```bash
-test "$(sed -n '1p' deploy/secrets/youtube.cookies.txt)" = '# Netscape HTTP Cookie File'
-test "$(stat -f '%Lp' deploy/secrets/youtube.cookies.txt 2>/dev/null || stat -c '%a' deploy/secrets/youtube.cookies.txt)" = 600
+test "$(sed -n '1p' deploy/secrets/media/youtube.cookies.txt)" = '# Netscape HTTP Cookie File'
+test "$(stat -f '%Lp' deploy/secrets/media/youtube.cookies.txt 2>/dev/null || stat -c '%a' deploy/secrets/media/youtube.cookies.txt)" = 600
 ```
 
 Do not commit, paste, email, upload to issue trackers, include in screenshots, or
@@ -68,15 +68,15 @@ final file with the media container's numeric uid/gid and read-only mode. Numeri
 ownership avoids dependence on host user names.
 
 ```bash
-scp deploy/secrets/youtube.cookies.txt \
+scp deploy/secrets/media/youtube.cookies.txt \
   lucius7@your-vps.example:/tmp/dreamstream-youtube.cookies.incoming
 
 ssh lucius7@your-vps.example '
   sudo install -d -o 10001 -g 10001 -m 0700 \
-    /home/lucius7/dreamstream99/deploy/secrets
+    /home/lucius7/dreamstream99/deploy/secrets/media
   sudo install -o 10001 -g 10001 -m 0400 \
     /tmp/dreamstream-youtube.cookies.incoming \
-    /home/lucius7/dreamstream99/deploy/secrets/youtube.cookies.txt
+    /home/lucius7/dreamstream99/deploy/secrets/media/youtube.cookies.txt
   sudo rm -f /tmp/dreamstream-youtube.cookies.incoming
 '
 ```
@@ -87,14 +87,14 @@ a narrowly scoped root helper. This works for both first install and rotation
 without making the cookie world-readable:
 
 ```bash
-scp -p deploy/secrets/youtube.cookies.txt \
+scp -p deploy/secrets/media/youtube.cookies.txt \
   lucius7@your-vps.example:/home/lucius7/.dreamstream-youtube.cookies.incoming
 
 ssh lucius7@your-vps.example '
   chmod 0600 /home/lucius7/.dreamstream-youtube.cookies.incoming
   docker run --rm --user 0:0 --entrypoint sh \
     -v /home/lucius7/.dreamstream-youtube.cookies.incoming:/incoming:ro \
-    -v /home/lucius7/dreamstream99/deploy/secrets:/secrets \
+    -v /home/lucius7/dreamstream99/deploy/secrets/media:/secrets \
     dreamstream99-media \
     -c "install -o 10001 -g 10001 -m 0400 \
       /incoming /secrets/youtube.cookies.txt"
@@ -111,10 +111,12 @@ the protected root `.env`:
 ```dotenv
 YTDLP_COOKIEFILE_SOURCE=/run/secrets/youtube.cookies.txt
 YTDLP_COOKIEFILE=/tmp/dreamstream-media/youtube.cookies.txt
-YTDLP_PLAYER_CLIENT=default
+MEDIA_EGRESS_PROXY=http://media-egress:7890
+YTDLP_PLAYER_CLIENT=mweb
 ```
 
-The Compose mount exposes `deploy/secrets/` read-only at `/run/secrets`.
+The Compose mount exposes only `deploy/secrets/media/` read-only at
+`/run/secrets`; the media container cannot read the sibling egress secret.
 `YTDLP_COOKIEFILE_SOURCE` names that immutable secret; startup copies it into a
 private `0700` tmpfs directory as a stable `0600` runtime base. Each resolve
 creates its own disposable `0600` jar from that base, lets yt-dlp update it, and
@@ -162,16 +164,26 @@ DREAMSTREAM_BASE_URL=https://dreamstream.lucius7.dev npm run smoke:e2e
 ```
 
 Health alone validates process readiness, not whether YouTube accepts the
-session. Keep `YTDLP_PLAYER_CLIENT=default`: this is yt-dlp's official special
-preset for authenticated defaults (`web_embedded`, `tv_downgraded`, and `web`
-in the pinned release), rather than one literal client name. Explicit `tv`
-failed to resolve even a known public video with the fresh cookie, while an
-unknown client name may be silently ignored and fall back to defaults. A format
-listing, including format 18, or a successful resolve is therefore insufficient:
+session. The generic code default remains yt-dlp's authenticated `default`
+preset, but production uses the real `mweb` client with the Malaysian sidecar:
+the affected Topic/Release probes exposed no progressive stream under
+`default`, while `mweb` returned playable byte ranges. An unknown client name
+may be silently ignored and fall back to defaults, invalidating attribution. A
+format listing, including format 18, or a successful resolve is therefore insufficient:
 run the public smoke test and require its real relay `Range: bytes=0-1023`
 request to return `206`. Never add `--verbose`,
 raw headers, cookies, relay capability URLs, or yt-dlp debug dumps to production
 logs.
+
+Treat this smoke test as a proxy-affinity acceptance test. Resolution, relay
+`HEAD`, the first relay range read, and any 403 refresh must all use the same
+`MEDIA_EGRESS_PROXY` value and public exit IP used to create the cookie session.
+`YTDLP_PROXY` is only a deprecated alias and must remain empty when the new
+setting is used. A
+successful resolve is not proof of playback: require `Range: bytes=0-1023` to
+return `206 Partial Content`, a valid `Content-Range`, and a non-empty body. If
+the proxy or public exit IP changes, create a fresh isolated session, rotate the
+cookie secret, and repeat the test.
 
 ## Rotate and revoke
 
@@ -190,7 +202,7 @@ immediately after any suspected disclosure:
 
 To remove cookie authorization entirely, clear both `YTDLP_COOKIEFILE_SOURCE`
 and `YTDLP_COOKIEFILE` in `.env`, recreate `media` so its tmpfs copy disappears,
-remove `deploy/secrets/youtube.cookies.txt`, and revoke the Google session.
+remove `deploy/secrets/media/youtube.cookies.txt`, and revoke the Google session.
 Changing the dedicated account password and signing out other sessions is
 appropriate after suspected compromise. A cookie committed to Git or pasted
 into any third-party system must be treated as compromised even if the message

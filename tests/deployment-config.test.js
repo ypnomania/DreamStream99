@@ -13,13 +13,15 @@ test('cookie deployment contract stays least-privilege and discoverable', async 
     readFile(new URL('../docs/OPERATIONS.md', import.meta.url), 'utf8'),
   ]);
 
-  assert.match(compose, /\.\/deploy\/secrets:\/run\/secrets:ro/);
+  assert.match(compose, /\.\/deploy\/secrets\/media:\/run\/secrets:ro/);
+  assert.doesNotMatch(compose, /\.\/deploy\/secrets:\/run\/secrets:ro/);
   assert.match(compose, /YTDLP_COOKIEFILE_SOURCE:\s*\$\{YTDLP_COOKIEFILE_SOURCE:-\}/);
   assert.match(compose, /YTDLP_COOKIEFILE:\s*\$\{YTDLP_COOKIEFILE:-\}/);
   assert.match(compose, /YTDLP_PLAYER_CLIENT:\s*\$\{YTDLP_PLAYER_CLIENT:-default\}/);
   assert.match(environment, /^YTDLP_COOKIEFILE_SOURCE=$/m);
   assert.match(environment, /^YTDLP_COOKIEFILE=$/m);
-  assert.match(environment, /^YTDLP_PLAYER_CLIENT=default$/m);
+  assert.match(environment, /^YTDLP_PLAYER_CLIENT=mweb$/m);
+  assert.match(environment, /^MEDIA_EGRESS_PROXY=http:\/\/media-egress:7890$/m);
   assert.match(environment, /\/run\/secrets\/youtube\.cookies\.txt/);
   assert.match(ignore, /^deploy\/secrets\/\*$/m);
   assert.match(guide, /Netscape HTTP Cookie File/);
@@ -30,8 +32,8 @@ test('cookie deployment contract stays least-privilege and discoverable', async 
   assert.match(guide, /Range: bytes=0-1023/);
   assert.match(guide, /return `206`/);
   assert.match(guide, /format 18.*insufficient/s);
-  assert.match(guide, /official special\s+preset/s);
-  assert.match(guide, /same VPS egress/);
+  assert.match(guide, /generic code default remains yt-dlp's authenticated `default`/);
+  assert.match(guide, /exact configured\s+Malaysian media proxy and public exit IP/s);
   assert.match(guide, /brand-new\s+incognito\/private browser session/s);
   assert.match(guide, /close the\s+entire private session and never reopen it/s);
   assert.match(guide, /Rotate and revoke/);

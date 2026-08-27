@@ -75,7 +75,8 @@ cookie file and is isolated the same way.
 
 Optional settings include `YTDLP_PLAYER_CLIENT` (default yt-dlp preset
 `default`, with concrete overrides limited to `mweb`, `tv`, `tv_downgraded`,
-`web`, and `web_embedded`), `YTDLP_PROXY`,
+`web`, and `web_embedded`), `MEDIA_EGRESS_PROXY` (with `YTDLP_PROXY` retained
+only as a deprecated alias),
 `YTDLP_SOCKET_TIMEOUT`, and provider-neutral `YTDLP_PO_TOKEN_PROVIDER`, e.g.
 `youtubepot-bgutilhttp:base_url=http://pot-provider:4416`. Install a selected
 plugin at build time with `--build-arg YTDLP_PLUGIN_PACKAGE=<package>`.
@@ -86,9 +87,12 @@ The image includes the matching `yt-dlp-ejs` package and an isolated Node 22
 runtime for YouTube's current JavaScript challenges. Node is explicitly enabled
 through yt-dlp's `js_runtimes` option; runtime EJS downloads are not enabled.
 `yt-dlp` is pinned to 2026.08.19, whose default dependency group pins
-`yt-dlp-ejs` 0.8.0. The production profile uses yt-dlp's special `default`
-preset, which selects its authenticated client combination when cookies are
-present. It is intentionally not an `INNERTUBE_CLIENTS` key; every concrete
+`yt-dlp-ejs` 0.8.0. The generic default is yt-dlp's special `default` preset,
+which selects its authenticated client combination when cookies are present.
+The deployed Malaysian-egress profile explicitly uses the real `mweb` client:
+it exposed progressive streams and returned `206` for the affected
+Topic/Release probes where `default` exposed none. The special preset is
+intentionally not an `INNERTUBE_CLIENTS` key; every concrete
 override is checked against that registry and must support cookies. Explicit
 `tv` did not pass this deployment's production acceptance and is only an opt-in
 diagnostic override. The resolver still accepts only direct muxed MP4 formats.
@@ -114,8 +118,9 @@ process-local. A restart intentionally invalidates all capabilities.
 
 Third-party licenses, including the copyleft obligations introduced by the
 default yt-dlp extras and bgutil provider, are summarized in
-`media/THIRD_PARTY_NOTICES.md` and retained inside the image. If `YTDLP_PROXY`
-is enabled, ensure the PO provider uses compatible egress/session settings too;
+`media/THIRD_PARTY_NOTICES.md` and retained inside the image. If
+`MEDIA_EGRESS_PROXY` is enabled, ensure the PO provider uses compatible
+egress/session settings too;
 tokens generated through a different network identity may still produce 403s.
 
 ## Tests

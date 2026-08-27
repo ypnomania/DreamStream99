@@ -1,4 +1,3 @@
-import os
 import re
 from contextlib import asynccontextmanager
 from http.cookiejar import CookieJar, DefaultCookiePolicy
@@ -14,6 +13,7 @@ from starlette.responses import JSONResponse
 
 from media_service.config import (
     ConfigurationError,
+    MediaEgressProxySettings,
     MediaGrantSettings,
     MediaOriginSettings,
     RelayRefreshSettings,
@@ -72,8 +72,7 @@ def create_relay_http_client(
     *,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> httpx.AsyncClient:
-    proxy = os.getenv("YTDLP_PROXY")
-    proxy = proxy.strip() if proxy else None
+    proxy = MediaEgressProxySettings.from_env().proxy
     client_options: dict[str, Any] = {
         "cookies": CookieJar(policy=_RejectAllCookies()),
         "follow_redirects": False,
@@ -84,7 +83,9 @@ def create_relay_http_client(
             pool=10.0,
         ),
         "transport": transport,
-        "trust_env": proxy is None,
+        # Never inherit HTTP(S)_PROXY independently from yt-dlp. Both resolver
+        # and relay must use the one explicit media-egress setting or go direct.
+        "trust_env": False,
     }
     if proxy is not None and transport is None:
         client_options["proxy"] = proxy

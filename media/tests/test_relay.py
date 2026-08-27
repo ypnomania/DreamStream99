@@ -98,6 +98,8 @@ def relay_harness(monkeypatch):
     store = RelaySessionStore()
     clients: list[httpx.AsyncClient] = []
     monkeypatch.setenv("MEDIA_GRANT_SECRET", MEDIA_GRANT_SECRET)
+    monkeypatch.delenv("MEDIA_EGRESS_PROXY", raising=False)
+    monkeypatch.delenv("YTDLP_PROXY", raising=False)
     app.dependency_overrides[get_relay_sessions] = lambda: store
 
     def install_transport(handler) -> None:
@@ -111,6 +113,33 @@ def relay_harness(monkeypatch):
     app.dependency_overrides.clear()
     for http_client in clients:
         anyio.run(http_client.aclose)
+
+
+def test_relay_and_yt_dlp_share_one_authenticated_proxy(monkeypatch):
+    proxy = "http://relay-user:dummy-password@proxy.example:8080"
+    monkeypatch.setenv("MEDIA_EGRESS_PROXY", proxy)
+    monkeypatch.delenv("YTDLP_PROXY", raising=False)
+
+    with patch("media_service.main.httpx.AsyncClient") as client_class:
+        relay_client = create_relay_http_client()
+
+    assert relay_client is client_class.return_value
+    assert client_class.call_args.kwargs["proxy"] == proxy
+    assert client_class.call_args.kwargs["trust_env"] is False
+    assert main_module.YtDlpSettings.from_env().youtube_dl_options()["proxy"] == proxy
+
+
+def test_relay_does_not_inherit_ambient_proxy_when_unconfigured(monkeypatch):
+    monkeypatch.delenv("MEDIA_EGRESS_PROXY", raising=False)
+    monkeypatch.delenv("YTDLP_PROXY", raising=False)
+    monkeypatch.setenv("HTTPS_PROXY", "http://ambient-user:secret@ambient.example")
+
+    with patch("media_service.main.httpx.AsyncClient") as client_class:
+        create_relay_http_client()
+
+    assert "proxy" not in client_class.call_args.kwargs
+    assert client_class.call_args.kwargs["trust_env"] is False
+    assert main_module.YtDlpSettings.from_env().youtube_dl_options()["proxy"] == ""
 
 
 def test_range_is_forwarded_and_206_headers_and_raw_chunks_are_relayed(relay_harness):

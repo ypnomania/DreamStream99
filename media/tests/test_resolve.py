@@ -30,6 +30,7 @@ def clean_service_state(monkeypatch):
     for name in (
         "YTDLP_COOKIEFILE",
         "YTDLP_COOKIEFILE_SOURCE",
+        "MEDIA_EGRESS_PROXY",
         "YTDLP_PLAYER_CLIENT",
         "YTDLP_PO_TOKEN_PROVIDER",
         "YTDLP_PROXY",

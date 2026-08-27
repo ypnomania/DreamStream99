@@ -65,6 +65,7 @@ authoritative.
 | [yt-dlp](https://github.com/yt-dlp/yt-dlp) | YouTube metadata and progressive format resolution | Unlicense |
 | [yt-dlp EJS](https://github.com/yt-dlp/ejs) | External JavaScript challenge components | Unlicense, MIT, and ISC components |
 | [bgutil-ytdlp-pot-provider](https://github.com/Brainicism/bgutil-ytdlp-pot-provider) | PO-token plugin and internal HTTP sidecar | GPL-3.0 |
+| [Mihomo](https://github.com/MetaCubeX/mihomo) | Private Malaysian media-egress sidecar | GPL-3.0 |
 | [Caddy](https://github.com/caddyserver/caddy) | TLS and reverse-proxy gateway | Apache-2.0 |
 
 DreamStream 99 does not vendor these runtime projects into its MIT-licensed

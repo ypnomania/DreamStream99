@@ -55,6 +55,8 @@ services:
       YTDLP_COOKIEFILE: ${YTDLP_COOKIEFILE:-}
       YTDLP_PLAYER_CLIENT: ${YTDLP_PLAYER_CLIENT:-default}
       YTDLP_PO_TOKEN_PROVIDER: ${YTDLP_PO_TOKEN_PROVIDER:-youtubepot-bgutilhttp:base_url=http://pot-provider:4416}
+      MEDIA_EGRESS_PROXY: ${MEDIA_EGRESS_PROXY:-}
+      # Deprecated compatibility alias. Leave empty when MEDIA_EGRESS_PROXY is used.
       YTDLP_PROXY: ${YTDLP_PROXY:-}
       YTDLP_SOCKET_TIMEOUT: ${YTDLP_SOCKET_TIMEOUT:-20}
       RELAY_REFRESH_TIMEOUT_SECONDS: ${RELAY_REFRESH_TIMEOUT_SECONDS:-30}
@@ -64,7 +66,9 @@ services:
       # Host Caddy may reach this loopback port; never publish media directly.
       - "127.0.0.1:${MEDIA_PORT:-8788}:8080"
     volumes:
-      - ./deploy/secrets:/run/secrets:ro
+      # Mount only media-owned secrets; egress node credentials live in a
+      # separate host directory that this container cannot read.
+      - ./deploy/secrets/media:/run/secrets:ro
     networks:
       - backend
     read_only: true
