@@ -37,9 +37,9 @@ jobs:
         run: npm run build
         env:
           WT_RUNTIME_MODE: websocket
-          WT_API_URL: https://dreamstream.lucius7.dev/api/rooms
-          WT_WEBSOCKET_URL: wss://dreamstream.lucius7.dev/api/rooms
-          WT_MEDIA_URL: https://dreamstream.lucius7.dev/media
+          WT_API_URL: https://dreamstream99.lucius7.dev/api/rooms
+          WT_WEBSOCKET_URL: wss://dreamstream99.lucius7.dev/api/rooms
+          WT_MEDIA_URL: https://dreamstream99.lucius7.dev/media
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
         with:

@@ -129,7 +129,7 @@ services:
     restart: unless-stopped
     logging: *bounded-logs
     environment:
-      PUBLIC_HOST: ${PUBLIC_HOST:-dreamstream.lucius7.dev}
+      PUBLIC_HOST: ${PUBLIC_HOST:-dreamstream99.lucius7.dev}
       ALLOWED_ORIGIN: ${ALLOWED_ORIGIN:-https://ypnomania.github.io}
     ports:
       - "80:80"

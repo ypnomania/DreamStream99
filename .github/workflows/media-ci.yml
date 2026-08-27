@@ -61,18 +61,19 @@ jobs:
       - name: Build Python 3.13 image
         run: docker build --tag dreamstream-media:test media
 
-      - name: Validate and build media egress relay
+      - name: Validate media egress overlay
         env:
           MEDIA_GRANT_SECRET: ci-media-grant-secret-at-least-32-bytes
-          SSH_EGRESS_IPV6: 2001:db8::1
         run: |
           docker compose \
             --file docker-compose.yml \
             --file deploy/compose.media-egress.yml \
             config --quiet
-          docker build \
-            --tag dreamstream-media-egress-relay:test \
-            --file deploy/media-egress-relay.Dockerfile .
+          MIHOMO_IMAGE="$(awk '/image: metacubex\/mihomo:/{print $2; exit}' deploy/compose.media-egress.yml)"
+          test -n "$MIHOMO_IMAGE"
+          docker run --rm \
+            --volume "$PWD/tests/fixtures/media-egress.example.yaml:/tmp/media-egress.yaml:ro" \
+            "$MIHOMO_IMAGE" -t -f /tmp/media-egress.yaml
 
       - name: Smoke-test image health
         run: |

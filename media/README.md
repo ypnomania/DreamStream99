@@ -84,19 +84,16 @@ The root Compose file enables the pinned open-source bgutil provider and plugin
 by default as an internal-only Media Plane sidecar; it publishes no host port.
 
 In production, `MEDIA_EGRESS_PROXY` remains the ordinary internal HTTP URI
-`http://media-egress:7890`; this application does not hold SSH credentials.
-Non-root Mihomo carries that traffic through one dedicated non-root SSH account
-using an Ed25519 key and non-empty host-key pins. A separate non-root
-host-network socat relay binds TCP4 only to the Docker bridge gateway at
-`SSH_EGRESS_RELAY_BIND:SSH_EGRESS_RELAY_PORT` and forwards TCP6 to the
-IPv6-only `SSH_EGRESS_IPV6:SSH_EGRESS_PORT` target. Port `35201` is the private
-bridge relay; the remote SSH service remains port `22`. Neither is published.
+`http://media-egress:7890`; this application does not hold VLESS credentials.
+Non-root Mihomo carries that traffic directly through one reviewed Hong Kong
+VLESS Reality node on a dedicated Docker network shared only with this media
+container. Compose publishes no Mihomo host port.
 
 The media container mounts only its cookie-secret directory. It cannot read
-`media-egress.yaml` or `media-egress-ssh-key`; only Mihomo receives the key at
-`/run/secrets/media-egress-ssh-key`, mode `0400`. Resolution, relay `HEAD` and
+`media-egress.yaml`; only Mihomo receives that ignored configuration read-only.
+Resolution, relay `HEAD` and
 Range reads, and the retry after an upstream 403 all use the same
-`MEDIA_EGRESS_PROXY` and exact Malaysian SSH public exit. Production fails
+`MEDIA_EGRESS_PROXY` and exact Hong Kong VLESS public exit. Production fails
 closed instead of falling back to direct VPS egress.
 
 The image includes the matching `yt-dlp-ejs` package and an isolated Node 22
@@ -105,9 +102,9 @@ through yt-dlp's `js_runtimes` option; runtime EJS downloads are not enabled.
 `yt-dlp` is pinned to 2026.08.19, whose default dependency group pins
 `yt-dlp-ejs` 0.8.0. The generic default is yt-dlp's special `default` preset,
 which selects its authenticated client combination when cookies are present.
-The deployed Malaysian SSH-egress profile explicitly uses the real `mweb` client:
-it exposed progressive streams and returned `206` for the affected
-Topic/Release probes where `default` exposed none. The special preset is
+The production Hong Kong VLESS profile explicitly uses the real `mweb` client;
+acceptance requires progressive streams and a public `206` Range response for
+the affected Topic/Release probes. The special preset is
 intentionally not an `INNERTUBE_CLIENTS` key; every concrete
 override is checked against that registry and must support cookies. Explicit
 `tv` did not pass this deployment's production acceptance and is only an opt-in

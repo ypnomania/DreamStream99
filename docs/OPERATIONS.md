@@ -7,15 +7,15 @@ DreamStream 99 keeps room and relay state in memory. Operations should favor sma
 ```bash
 docker compose ps
 docker compose logs --since=15m control media
-curl --fail https://dreamstream.lucius7.dev/healthz
-curl --fail https://dreamstream.lucius7.dev/media/healthz
+curl --fail https://dreamstream99.lucius7.dev/healthz
+curl --fail https://dreamstream99.lucius7.dev/media/healthz
 ```
 
 Healthy containers do not prove YouTube extraction or Range delivery. Run the public smoke test after deployment, dependency changes, egress changes, or a Caddy edit:
 
 ```bash
 for media_id in _5GDQOm1wvw GIrBSG7RR1E 9bQmwjT-1mw; do
-  DREAMSTREAM_BASE_URL=https://dreamstream.lucius7.dev \
+  DREAMSTREAM_BASE_URL=https://dreamstream99.lucius7.dev \
   DREAMSTREAM_MEDIA_ID="$media_id" npm run smoke:e2e
 done
 ```
@@ -35,7 +35,7 @@ The PO-token sidecar's Docker logging is disabled because the upstream process p
 npm ci
 npm run verify
 docker compose build --pull control media
-docker compose up -d control media pot-provider media-egress-relay media-egress
+docker compose up -d control media pot-provider media-egress
 docker compose ps
 ```
 
@@ -47,8 +47,7 @@ For a dependency-only media rebuild, verify Node, EJS, yt-dlp, and the provider 
 | --- | --- |
 | Restart Caddy | Short reconnect; control rooms and relay sessions remain |
 | Restart PO provider | In-flight/future resolves may fail briefly; existing relay sessions remain |
-| Restart SSH bridge relay | New egress connections fail briefly; Mihomo reconnects through the same exit when the relay returns |
-| Restart Mihomo egress | In-flight resolves/relays fail; signed URLs must be refreshed after the same SSH exit returns |
+| Restart Mihomo egress | In-flight resolves/relays fail; signed URLs must be refreshed after the same VLESS exit returns |
 | Restart media | All opaque relay capabilities disappear; browsers must resolve again |
 | Restart control | All rooms, messages, memberships, and guest credentials disappear |
 | Rotate HMAC secret | Existing grants become invalid; restart control and media with the new identical value |
@@ -72,13 +71,13 @@ If the browser still fails:
    `MEDIA_EGRESS_PROXY=http://media-egress:7890` without printing any secret
    sidecar fields.
 4. Re-run the smoke test with a known public progressive video.
-5. Test whether the configured SSH public exit is being challenged or blocked.
+5. Test whether the configured VLESS public exit is being challenged or blocked.
 6. Update yt-dlp/EJS/provider together and rerun the Python suite.
 7. If needed, supply a protected cookie file using the [dedicated-account
    procedure](YOUTUBE_COOKIES.md), or use an affinity-preserving proxy.
 
 For production, that route is the internal Mihomo HTTP proxy and the exact
-configured Malaysian SSH public exit—not merely another address in Malaysia.
+configured Hong Kong VLESS public exit—not merely another address in Hong Kong.
 Cookie creation/export, yt-dlp resolution, relay byte reads, and 403 refreshes
 must remain on it. Request the public relay with `Range: bytes=0-1023` and
 require `206 Partial Content`, a valid `Content-Range`, and a non-empty body.
@@ -105,7 +104,7 @@ Monitor:
 - open connections and file descriptors;
 - control room capacity/rate-limit responses;
 - media resolve latency and 502 rate;
-- SSH bridge-relay and Mihomo health/restart counts;
+- Mihomo health/restart counts;
 - disk used by Docker images and logs;
 - CPU/memory during concurrent yt-dlp refreshes.
 
@@ -123,75 +122,50 @@ Rotation is a coordinated, room-disrupting operation:
 
 Do not attempt a rolling rotation with different secrets; Node-issued grants would fail Python verification.
 
-## Malaysian SSH media-egress lifecycle
+## Hong Kong VLESS media-egress lifecycle
 
-The egress path is deliberately split by responsibility:
+The egress path is deliberately narrow:
 
 ```text
-media --HTTP--> Mihomo --SSH/TCP4--> socat --TCP6--> IPv6-only SSH:22 --> Internet
+media --HTTP--> Mihomo --VLESS Reality/TLS/TCP--> Hong Kong exit --> Internet
 ```
 
-- `media` knows only `http://media-egress:7890`. It mounts neither
-  `deploy/secrets/egress/media-egress.yaml` nor
-  `media-egress-ssh-key`, so it cannot read the SSH account, host-key pins, or
-  private key.
-- Mihomo runs non-root on the private Docker network with no host port. Its
-  minimal static configuration uses one dedicated non-root SSH account, an
-  Ed25519 key mounted read-only at
-  `/run/secrets/media-egress-ssh-key`, and non-empty host-key pins. This
-  deployment does not consume a proxy subscription.
-- Host-network `media-egress-relay` has no SSH secret. socat listens with TCP4
-  only on the Docker bridge gateway at
-  `SSH_EGRESS_RELAY_BIND:SSH_EGRESS_RELAY_PORT` and forwards with TCP6 to
-  `SSH_EGRESS_IPV6:SSH_EGRESS_PORT`. Keep it non-root, read-only, without added
-  capabilities or privilege escalation.
-
-The four protected root `.env` values have distinct meanings:
-
-| Setting | Operational meaning |
-| --- | --- |
-| `SSH_EGRESS_IPV6` | Actual IPv6-only SSH destination; never print it in routine output |
-| `SSH_EGRESS_PORT` | Remote SSH service port, normally `22` |
-| `SSH_EGRESS_RELAY_BIND` | Docker bridge-gateway private IPv4 bind, normally `172.17.0.1` |
-| `SSH_EGRESS_RELAY_PORT` | Private Mihomo-to-socat TCP4 relay, normally `35201` |
-
-Port `35201` is not an alternate SSH service on the remote host. It exists only
-on the Docker bridge gateway; socat sends those connections to the IPv6 target
-on port `22`. The Mihomo SSH `server`/`port` in the protected YAML must match the
-relay bind/port pair. Never listen on a wildcard, loopback, public, or IPv6
-address, and never publish `35201` through Compose or the firewall.
+- `media` knows only `http://media-egress:7890`. It does not mount
+  `deploy/secrets/egress/media-egress.yaml`, so it cannot read the VLESS
+  destination, UUID, Reality parameters, or TLS server name.
+- Mihomo runs non-root on a dedicated bridge shared only with `media`, with no
+  host port. Its
+  minimal static configuration uses one VLESS Reality outbound and a final
+  `MATCH` rule selecting it. This deployment does not consume a proxy
+  subscription and has no `DIRECT` fallback.
+- The ignored configuration is the only egress secret. It is mounted read-only
+  into Mihomo, owned by `10001:10001` with mode `0400`, and is never copied into
+  an image or environment variable.
 
 For routine validation:
 
-1. Confirm both egress services are healthy with `docker compose ps
-   media-egress-relay media-egress`. The socat check proves that the private
-   TCP4 listener is bound; the Mihomo check exercises the complete TCP4-to-TCP6
-   path, its own HTTP listener, pinned host key, key authentication, and SSH
-   forwarding.
-2. Confirm the host listener is exactly the configured private bridge-gateway
-   address and port. Treat `0.0.0.0:35201`, `[::]:35201`, loopback, or a public
-   bind as an incident.
-3. From `media`, run the proxied Cloudflare trace and log only `loc=MY`; do not
-   print the SSH destination, account, key material, host-key pins, or exit
+1. Confirm `media-egress` is healthy with `docker compose ps media-egress`. Its
+   health check exercises Mihomo's private HTTP listener and the configured
+   VLESS Reality path.
+2. Confirm Compose publishes no Mihomo port, only `media` shares its dedicated
+   bridge, and no unexpected host listener appeared.
+3. From `media`, run the proxied Cloudflare trace and log only `loc=HK`; do not
+   print the VLESS destination, UUID, Reality parameters, TLS server name, or exit
    address.
-4. Run the public resolve plus `Range: bytes=0-1023` smoke. A healthy SSH socket
-   or HTTP `204` alone does not prove the required Malaysian public exit or
+4. Run the public resolve plus `Range: bytes=0-1023` smoke. An HTTP `204` alone
+   does not prove the required Hong Kong public exit or
    GoogleVideo byte delivery.
 
-The relay handles each incoming connection independently and Mihomo
-re-establishes SSH transport after interruption; Compose restart policies and
-layered health checks restore the path without exposing another listener. If
-either component remains unavailable, fail closed. Never remove
+Mihomo re-establishes transport after interruption; Compose restart policies and
+the end-to-end health check restore the path without exposing a host listener.
+If it remains unavailable, fail closed. Never remove
 `MEDIA_EGRESS_PROXY` to fall back to direct VPS egress.
 
-Keep both `media-egress.yaml` and the host
-`deploy/secrets/egress/media-egress-ssh-key` owned by `10001:10001`, mode
-`0400`, and outside Git. Rotate an Ed25519 key by authorizing the replacement
-under the same restricted non-root account, atomically installing the new
-private key, recreating Mihomo, validating host-key pins and `loc=MY`, and only
-then revoking the old key. A host-key change is not routine rotation: verify it
-through an independent authenticated channel before replacing a pin. If the
-SSH public exit changes, create a new isolated browser session through that
+Keep `media-egress.yaml` owned by `10001:10001`, mode `0400`, and outside Git.
+Rotate the node by atomically installing a reviewed replacement configuration,
+recreating Mihomo, validating `loc=HK`, and running every target Range smoke
+before revoking the old credentials. If the
+VLESS public exit changes, create a new isolated browser session through that
 exact exit, rotate the cookie, and rerun every target Range smoke because
 cookie affinity and existing signed GoogleVideo URLs are no longer valid.
 
@@ -210,7 +184,7 @@ mounted secret or the stable runtime base.
 - Verify source metadata/header plus the `0700` runtime directory and `0600`
   working copy without printing cookie rows.
 - Rotate with a brand-new incognito/private session through the exact configured
-  Mihomo HTTP proxy and SSH public exit used by resolution and relay. Log
+  Mihomo HTTP proxy and VLESS public exit used by resolution and relay. Log
   in, open a blank tab, close all YouTube tabs, export, then immediately close
   the entire private session and never reopen it. Stage the export, install it
   with the same ownership/mode, recreate only `media`, and immediately run the
@@ -226,16 +200,16 @@ Use the commands and account-safety checklist in [YouTube cookie
 operations](YOUTUBE_COOKIES.md). Cookie rotation recreates media and therefore
 invalidates existing relay capabilities; browser recovery must resolve again.
 This deployment keeps `YTDLP_PLAYER_CLIENT=mweb`: the three production
-Topic/Release probes exposed progressive streams with this real client and the
-Malaysian SSH egress, while `default` exposed none. A cookie exported under a different network
+Topic/Release probes must expose progressive streams with this real client and the
+Hong Kong VLESS egress. A cookie exported under a different network
 egress may be rotated into a logged-out session after reaching the VPS; create
 the replacement isolated browser session through the same configured Mihomo
-proxy and exact SSH public exit used by resolution, relay, and refreshes. After
+proxy and exact VLESS public exit used by resolution, relay, and refreshes. After
 rotation, run the full public smoke
 test and require its real relay `Range: bytes=0-1023` request to return `206`.
 A healthy process or a successful format 18 resolve alone does not validate the
-cookie and player-client combination. `mweb` produced GoogleVideo `403` while
-resolution and relay were not using the working Malaysian SSH route; it is accepted
+cookie and player-client combination. A successful resolve is insufficient if
+resolution and relay are not using the working Hong Kong VLESS route; it is accepted
 only after the same exit returns a real public `206` Range response.
 
 ## Caddy changes and rollback
@@ -246,6 +220,6 @@ Back up the complete active Caddyfile. Validate before every reload. After reloa
 - API/media paths with missing, foreign, and exact Origins;
 - an OPTIONS preflight;
 - WebSocket upgrade and full smoke;
-- no direct listener on public 8787/8788/4416/35201.
+- no direct listener on public 8787/8788/4416/7890.
 
 To roll back application code, restore the recorded Git commit and known-good images while preserving `.env`. A control rollback/restart loses current rooms; a media rollback/restart invalidates relay capabilities. Communicate that behavior instead of trying to preserve incompatible in-memory state.

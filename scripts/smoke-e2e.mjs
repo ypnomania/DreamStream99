@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { WebSocket } from 'ws';
 
-const baseUrl = new URL(process.env.DREAMSTREAM_BASE_URL || 'https://dreamstream.lucius7.dev');
+const baseUrl = new URL(process.env.DREAMSTREAM_BASE_URL || 'https://dreamstream99.lucius7.dev');
 const allowedOrigin = process.env.DREAMSTREAM_ORIGIN || 'https://ypnomania.github.io';
 const mediaId = process.env.DREAMSTREAM_MEDIA_ID || 'dQw4w9WgXcQ';
 const skipMedia = process.env.DREAMSTREAM_SKIP_MEDIA === '1';

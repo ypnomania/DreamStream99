@@ -26,9 +26,9 @@ test('Pages build emits a deployable demo by default', async () => {
 test('Pages build injects only public backend endpoints for production', async () => {
   runBuild({
     WT_RUNTIME_MODE: 'websocket',
-    WT_API_URL: 'https://dreamstream.lucius7.dev/api/rooms/',
-    WT_WEBSOCKET_URL: 'wss://dreamstream.lucius7.dev/api/rooms',
-    WT_MEDIA_URL: 'https://dreamstream.lucius7.dev/media/',
+    WT_API_URL: 'https://dreamstream99.lucius7.dev/api/rooms/',
+    WT_WEBSOCKET_URL: 'wss://dreamstream99.lucius7.dev/api/rooms',
+    WT_MEDIA_URL: 'https://dreamstream99.lucius7.dev/media/',
   });
 
   const runtime = await readFile(path.join(root, 'dist/runtime-config.js'), 'utf8');
@@ -36,9 +36,9 @@ test('Pages build injects only public backend endpoints for production', async (
   const app = await readFile(path.join(root, 'dist/js/app.js'), 'utf8');
   const router = await readFile(path.join(root, 'dist/js/player-adapter-router.js'), 'utf8');
   assert.match(runtime, /"mode": "websocket"/);
-  assert.match(runtime, /"apiUrl": "https:\/\/dreamstream\.lucius7\.dev\/api\/rooms"/);
-  assert.match(runtime, /"websocketUrl": "wss:\/\/dreamstream\.lucius7\.dev\/api\/rooms"/);
-  assert.match(runtime, /"mediaUrl": "https:\/\/dreamstream\.lucius7\.dev\/media"/);
+  assert.match(runtime, /"apiUrl": "https:\/\/dreamstream99\.lucius7\.dev\/api\/rooms"/);
+  assert.match(runtime, /"websocketUrl": "wss:\/\/dreamstream99\.lucius7\.dev\/api\/rooms"/);
+  assert.match(runtime, /"mediaUrl": "https:\/\/dreamstream99\.lucius7\.dev\/media"/);
   assert.doesNotMatch(runtime, /TOKEN|SECRET|PASSWORD/);
   assert.doesNotMatch(`${html}\n${app}\n${router}`, /iframe_api|youtube-adapter|<iframe/i);
   assert.match(router, /new NativeMediaAdapter/);

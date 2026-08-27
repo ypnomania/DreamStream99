@@ -1,0 +1,24 @@
+port: 7890
+allow-lan: true
+bind-address: "*"
+mode: rule
+log-level: silent
+proxies:
+  - name: media-vless
+    type: vless
+    server: 192.0.2.1
+    port: 443
+    uuid: 00000000-0000-4000-8000-000000000000
+    network: tcp
+    udp: true
+    flow: xtls-rprx-vision
+    encryption: none
+    tls: true
+    skip-cert-verify: false
+    servername: example.com
+    client-fingerprint: firefox
+    reality-opts:
+      public-key: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+      short-id: 0123456789abcdef
+rules:
+  - MATCH,media-vless

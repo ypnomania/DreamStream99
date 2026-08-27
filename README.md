@@ -21,14 +21,13 @@
 - Short-lived HMAC media grants, opaque relay capabilities, exact-origin checks, bounded stores, and control-plane rate limits.
 - yt-dlp metadata resolution, progressive MP4 selection, HTTP `HEAD`/single-range relay, and one bounded automatic re-resolve after an upstream 403.
 - Docker Compose deployment with non-root, read-only control and media containers; Caddy terminates TLS and exposes only the public gateway.
-- Protected YouTube cookies, a pinned private Mihomo HTTP proxy backed by a key-authenticated SSH egress, an internal-only PO-token provider, and Node 22 EJS runtime for current YouTube challenges.
+- Protected YouTube cookies, a pinned private Mihomo HTTP proxy backed by one Hong Kong VLESS Reality egress, an internal-only PO-token provider, and Node 22 EJS runtime for current YouTube challenges.
 
-Production was verified through the Malaysian SSH exit and public hostname with two
-WebSocket peers plus the three regression media IDs `_5GDQOm1wvw`,
-`GIrBSG7RR1E`, and `9bQmwjT-1mw`; every public relay returned `206 Partial
-Content`, a valid `Content-Range`, and 1024 bytes. A real GitHub Pages browser
-also mounted `9bQmwjT-1mw` in the native player and advanced playback without an
-iframe or media error.
+Production acceptance uses two WebSocket peers plus the three regression media
+IDs `_5GDQOm1wvw`, `GIrBSG7RR1E`, and `9bQmwjT-1mw`; every public relay must
+return `206 Partial Content`, a valid `Content-Range`, and 1024 bytes through the
+same Hong Kong VLESS Reality egress. The real GitHub Pages client must also mount
+the native player and advance playback without an iframe or media error.
 
 ## Architecture
 
@@ -40,9 +39,8 @@ flowchart LR
     G -->|/media| M[FastAPI media]
     M -->|internal HTTP| T[PO-token provider]
     M -->|HTTP proxy URI| E[Mihomo :7890]
-    E -->|SSH via TCP4 :35201| R[host-network socat<br/>bridge gateway only]
-    R -->|TCP6 to SSH :22| S[Dedicated SSH egress]
-    S -->|yt-dlp metadata + Range| Y[YouTube / Google video CDN]
+    E -->|VLESS Reality over TLS/TCP| H[Hong Kong egress]
+    H -->|yt-dlp metadata + Range| Y[YouTube / Google video CDN]
 ```
 
 | Plane | Deployment | Responsibility |
@@ -51,23 +49,21 @@ flowchart LR
 | Gateway | VPS Caddy | TLS, strict CORS, security headers, `/api`/`/media` routing, streaming flush |
 | Control | VPS Node.js 22 | In-memory rooms, credentials, WebSocket v1 protocol, state broadcasts, 24-hour empty-room cleanup |
 | Media | VPS Python 3.13 | Media-grant validation, yt-dlp resolution, opaque relay sessions, Range forwarding, 403 refresh |
-| Media egress | VPS Mihomo + host-network socat | Mihomo keeps the application-facing HTTP proxy private; socat exposes only a Docker bridge-gateway TCP4 relay to the IPv6-only SSH target |
+| Media egress | VPS Mihomo | Keeps the application-facing HTTP proxy private and carries every media operation through one reviewed Hong Kong VLESS Reality node |
 
-The application still uses only `http://media-egress:7890`. Mihomo authenticates
-to a dedicated non-root SSH account with a dedicated Ed25519 key and non-empty
-host-key pins. The host-network `media-egress-relay` binds TCP4 only to the
-Docker bridge gateway at `SSH_EGRESS_RELAY_BIND:SSH_EGRESS_RELAY_PORT` and
-forwards TCP6 to `SSH_EGRESS_IPV6:SSH_EGRESS_PORT`. Port `35201` is the private
-bridge relay, not the remote service: the IPv6 SSH target remains port `22`.
-Compose publishes neither component; socat has no public or wildcard listener.
+The application still uses only `http://media-egress:7890`. The non-root Mihomo
+sidecar dials one reviewed VLESS Reality node from a dedicated Docker network
+shared only with the media container. Its complete live configuration stays in the ignored
+`deploy/secrets/egress/media-egress.yaml`; Compose publishes no proxy port and
+the media container cannot read that file.
 
 The default production endpoints are:
 
 ```text
 Frontend:  https://ypnomania.github.io/DreamStream99/
-Control:   https://dreamstream.lucius7.dev/api/rooms
-WebSocket: wss://dreamstream.lucius7.dev/api/rooms/{roomId}/ws
-Media:     https://dreamstream.lucius7.dev/media
+Control:   https://dreamstream99.lucius7.dev/api/rooms
+WebSocket: wss://dreamstream99.lucius7.dev/api/rooms/{roomId}/ws
+Media:     https://dreamstream99.lucius7.dev/media
 ```
 
 ## Request flow
@@ -91,8 +87,7 @@ openssl rand -base64 48
 ```
 
 Put the generated value in `.env` as `MEDIA_GRANT_SECRET`. Never commit or print
-that file. Install the ignored Mihomo configuration and `media-egress-ssh-key`
-as described in the
+that file. Install the ignored single-node Mihomo VLESS Reality configuration as described in the
 [deployment guide](docs/DEPLOYMENT.md), then set
 `COMPOSE_FILE=docker-compose.yml:deploy/compose.media-egress.yml`,
 `MEDIA_EGRESS_PROXY=http://media-egress:7890`, and the verified
@@ -106,12 +101,11 @@ docker compose ps
 
 If the host already runs Caddy, import [`deploy/Caddyfile.site`](deploy/Caddyfile.site)
 from the host Caddyfile. Production uses the media-egress overlay after installing
-the ignored `deploy/secrets/egress/media-egress.yaml` configuration and
-`deploy/secrets/egress/media-egress-ssh-key`:
+the ignored `deploy/secrets/egress/media-egress.yaml` configuration:
 
 ```bash
 COMPOSE_FILE=docker-compose.yml:deploy/compose.media-egress.yml \
-  docker compose up -d --build control media pot-provider media-egress-relay media-egress
+  docker compose up -d --build control media pot-provider media-egress
 ```
 
 The application ports bind to `127.0.0.1:8787` and `127.0.0.1:8788` by default. The PO-token sidecar has no host port. Follow the [deployment guide](docs/DEPLOYMENT.md) for DNS, Caddy validation, GitHub Pages settings, cookie fallback, upgrades, and rollback.
@@ -139,7 +133,7 @@ media/.venv/bin/pytest media
 Run the public protocol and Range smoke check after deployment:
 
 ```bash
-DREAMSTREAM_BASE_URL=https://dreamstream.lucius7.dev npm run smoke:e2e
+DREAMSTREAM_BASE_URL=https://dreamstream99.lucius7.dev npm run smoke:e2e
 ```
 
 The smoke script creates a disposable room and never prints room credentials or media grants.
@@ -150,18 +144,14 @@ The smoke script creates a disposable room and never prints room credentials or 
 | --- | --- | --- |
 | `MEDIA_GRANT_SECRET` | required | Exact shared HMAC secret for Node grant signing and Python verification |
 | `ALLOWED_ORIGIN` | `https://ypnomania.github.io` | One exact browser origin; an Origin never includes the repository path |
-| `PUBLIC_HOST` | `dreamstream.lucius7.dev` | TLS hostname used by the bundled Caddy profile |
+| `PUBLIC_HOST` | `dreamstream99.lucius7.dev` | TLS hostname used by the bundled Caddy profile |
 | `MAX_ROOMS` | `10000` | Bound on process-local control rooms |
 | `YTDLP_COOKIEFILE_SOURCE` | empty | Optional read-only dedicated-account Netscape secret under `/run/secrets/` |
 | `YTDLP_COOKIEFILE` | empty | Private tmpfs base copied into a disposable writable jar for each resolve; enable with the source as documented in the [cookie guide](docs/YOUTUBE_COOKIES.md) |
-| `YTDLP_PLAYER_CLIENT` | `default` | yt-dlp player client; the deployed Malaysian egress is verified with `mweb` for Topic/Release videos |
+| `YTDLP_PLAYER_CLIENT` | `default` | yt-dlp player client; production selects `mweb` and validates it through the configured VLESS exit for Topic/Release videos |
 | `YTDLP_PO_TOKEN_PROVIDER` | internal bgutil endpoint | yt-dlp PO-token plugin extractor argument |
 | `MEDIA_EGRESS_PROXY` | empty | One validated HTTP(S) proxy shared by resolution, relay, and refresh; overlay value is `http://media-egress:7890` |
 | `YTDLP_PROXY` | empty | Deprecated compatibility alias; if both proxy variables are set, they must match exactly |
-| `SSH_EGRESS_IPV6` | required | IPv6-only SSH target used by the host relay; keep the real address in the protected root `.env` |
-| `SSH_EGRESS_PORT` | `22` | Remote SSH target port; this is not the internal relay port |
-| `SSH_EGRESS_RELAY_BIND` | `172.17.0.1` | Docker bridge-gateway IPv4 address on which host-network socat alone listens |
-| `SSH_EGRESS_RELAY_PORT` | `35201` | Private TCP4 relay port used between Mihomo and socat; never publish it publicly |
 | `RELAY_REFRESH_*` | see `.env.example` | Refresh deadline, failure cooldown, and global concurrency bound |
 
 For a fork, change `ALLOWED_ORIGIN`, `PUBLIC_HOST`, and the three public endpoint variables in [`.github/workflows/pages.yml`](.github/workflows/pages.yml) together.
@@ -175,11 +165,11 @@ For a fork, change `ALLOWED_ORIGIN`, `PUBLIC_HOST`, and the three public endpoin
 - This architecture has no managed database, queue, transcoder, or control-plane subscription. The VPS, storage, DNS, and especially outbound media bandwidth can still cost money.
 - A directly addressed VPS is discoverable and is not a DDoS shield. This project provides application authorization and strict exposure, not volumetric attack protection.
 - YouTube behavior changes and some videos may require cookies, PO tokens, a supported JavaScript runtime, or different egress. Self-hosters are responsible for content rights and applicable platform terms.
-- A YouTube cookie file is a live account credential. Use only a dedicated low-value account, keep the source `deploy/secrets/media/youtube.cookies.txt` owned by uid/gid `10001` with mode `0400`, and never commit, paste, or log it. The media container mounts only `deploy/secrets/media`; it cannot read the separately mounted Mihomo configuration or `media-egress-ssh-key`. Startup stages a private `0600` tmpfs base; each resolve gives yt-dlp a unique disposable writable copy, so extractor shutdown cannot alter the mounted secret or poison later requests. YouTube may invalidate login state when a workstation cookie is moved to a different VPS egress, so establish a new isolated session through the same VPS egress. Follow the [export, verification, rotation, and revocation procedure](docs/YOUTUBE_COOKIES.md).
+- A YouTube cookie file is a live account credential. Use only a dedicated low-value account, keep the source `deploy/secrets/media/youtube.cookies.txt` owned by uid/gid `10001` with mode `0400`, and never commit, paste, or log it. The media container mounts only `deploy/secrets/media`; it cannot read the separately mounted Mihomo VLESS configuration. Startup stages a private `0600` tmpfs base; each resolve gives yt-dlp a unique disposable writable copy, so extractor shutdown cannot alter the mounted secret or poison later requests. YouTube may invalidate login state when a workstation cookie is moved to a different VPS egress, so establish a new isolated session through the same exact VLESS public exit. Follow the [export, verification, rotation, and revocation procedure](docs/YOUTUBE_COOKIES.md).
 
-Production media traffic must use the configured Malaysian SSH exit consistently.
+Production media traffic must use the configured Hong Kong VLESS Reality egress consistently.
 Cookie creation/export, yt-dlp resolution, relay byte reads, and 403 recovery must
-all traverse the same Mihomo HTTP proxy and exact SSH public exit; merely using
+all traverse the same configured Mihomo HTTP proxy and exact VLESS public exit; merely using
 the same country is not sufficient. Validate the public relay with `Range:
 bytes=0-1023` and require
 `206 Partial Content` plus a valid `Content-Range` before declaring it ready.
@@ -193,7 +183,7 @@ public/                  GitHub Pages UI and browser adapters
 server/                  Node control service and media-grant signer
 media/                   FastAPI resolver and streaming relay
 deploy/                  Caddy configs, env template, secret mount
-deploy/compose.media-egress.yml  Private Mihomo, socat, and SSH-egress overlay
+deploy/compose.media-egress.yml  Private single-node Mihomo VLESS overlay
 scripts/build-pages.js   Static Pages build with public runtime injection
 scripts/smoke-e2e.mjs    Public control + media smoke test
 tests/                   Node, frontend, and cross-language grant tests

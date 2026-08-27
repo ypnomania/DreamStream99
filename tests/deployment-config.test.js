@@ -22,10 +22,7 @@ test('cookie deployment contract stays least-privilege and discoverable', async 
   assert.match(environment, /^YTDLP_COOKIEFILE=$/m);
   assert.match(environment, /^YTDLP_PLAYER_CLIENT=mweb$/m);
   assert.match(environment, /^MEDIA_EGRESS_PROXY=http:\/\/media-egress:7890$/m);
-  assert.match(environment, /^SSH_EGRESS_IPV6=2001:db8::1$/m);
-  assert.match(environment, /^SSH_EGRESS_PORT=22$/m);
-  assert.match(environment, /^SSH_EGRESS_RELAY_BIND=172\.17\.0\.1$/m);
-  assert.match(environment, /^SSH_EGRESS_RELAY_PORT=35201$/m);
+  assert.doesNotMatch(environment, /^(?:SSH_EGRESS|VLESS_)[A-Z0-9_]*=/m);
   assert.match(environment, /\/run\/secrets\/youtube\.cookies\.txt/);
   assert.match(ignore, /^deploy\/secrets\/\*$/m);
   assert.match(ignore, /^deploy\/secrets\/egress\/\*$/m);
@@ -40,7 +37,7 @@ test('cookie deployment contract stays least-privilege and discoverable', async 
   assert.match(guide, /generic code default remains yt-dlp's authenticated `default`/);
   assert.match(
     guide,
-    /exact configured\s+Mihomo HTTP proxy and Malaysian SSH public exit/s,
+    /exact configured\s+Mihomo HTTP proxy and Hong Kong VLESS public exit/s,
   );
   assert.match(guide, /brand-new\s+incognito\/private browser session/s);
   assert.match(guide, /close the\s+entire private session and never reopen it/s);

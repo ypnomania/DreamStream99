@@ -29,9 +29,9 @@ cookie store. From a trusted DreamStream checkout, set a restrictive umask and
 ask yt-dlp to write Netscape format directly into the ignored secret directory:
 
 The isolated browser session must be established through the exact configured
-Mihomo HTTP proxy and Malaysian SSH public exit that will run yt-dlp resolution,
-relay, and 403 refreshes. Do not expose its SSH destination, account, key,
-host-key pins, or public address in shell history or documentation. In
+Mihomo HTTP proxy and Hong Kong VLESS public exit that will run yt-dlp resolution,
+relay, and 403 refreshes. Do not expose its VLESS destination, UUID, Reality
+parameters, TLS server name, or public address in shell history or documentation. In
 production, the source parsed locally as `authenticated=true`, but the first VPS request
 left the runtime jar unauthenticated. Re-exporting that same local session does
 not fix the binding; create a new isolated session through that same configured
@@ -121,10 +121,8 @@ YTDLP_PLAYER_CLIENT=mweb
 
 The Compose mount exposes only `deploy/secrets/media/` read-only at
 `/run/secrets`; the media container cannot read the sibling Mihomo
-configuration or `media-egress-ssh-key`. Only the non-root Mihomo container
-receives that Ed25519 key at `/run/secrets/media-egress-ssh-key`, mode `0400`,
-and validates non-empty SSH host-key pins. The host-network socat relay receives
-no authentication secret.
+VLESS configuration. Only the non-root Mihomo container receives that ignored
+file read-only; it has no host-published proxy port.
 `YTDLP_COOKIEFILE_SOURCE` names that immutable secret; startup copies it into a
 private `0700` tmpfs directory as a stable `0600` runtime base. Each resolve
 creates its own disposable `0600` jar from that base, lets yt-dlp update it, and
@@ -167,15 +165,15 @@ print('cookie_file_ready')
 PY
 
 docker compose ps
-curl --fail https://dreamstream.lucius7.dev/media/healthz
-DREAMSTREAM_BASE_URL=https://dreamstream.lucius7.dev npm run smoke:e2e
+curl --fail https://dreamstream99.lucius7.dev/media/healthz
+DREAMSTREAM_BASE_URL=https://dreamstream99.lucius7.dev npm run smoke:e2e
 ```
 
 Health alone validates process readiness, not whether YouTube accepts the
 session. The generic code default remains yt-dlp's authenticated `default`
-preset, but production uses the real `mweb` client with the Malaysian SSH egress:
-the affected Topic/Release probes exposed no progressive stream under
-`default`, while `mweb` returned playable byte ranges. An unknown client name
+preset, but production uses the real `mweb` client with the Hong Kong VLESS
+Reality egress. The affected Topic/Release probes must return playable byte
+ranges through that exact route. An unknown client name
 may be silently ignored and fall back to defaults, invalidating attribution. A
 format listing, including format 18, or a successful resolve is therefore insufficient:
 run the public smoke test and require its real relay `Range: bytes=0-1023`
@@ -183,15 +181,15 @@ request to return `206`. Never add `--verbose`,
 raw headers, cookies, relay capability URLs, or yt-dlp debug dumps to production
 logs.
 
-Treat this smoke test as an SSH-exit-affinity acceptance test. Resolution, relay
+Treat this smoke test as a VLESS-exit-affinity acceptance test. Resolution, relay
 `HEAD`, the first relay range read, and any 403 refresh must all use the same
-`MEDIA_EGRESS_PROXY` value and exact SSH public exit used to create the cookie
+`MEDIA_EGRESS_PROXY` value and exact VLESS public exit used to create the cookie
 session.
 `YTDLP_PROXY` is only a deprecated alias and must remain empty when the new
 setting is used. A
 successful resolve is not proof of playback: require `Range: bytes=0-1023` to
 return `206 Partial Content`, a valid `Content-Range`, and a non-empty body. If
-the SSH public exit changes, create a fresh isolated session, rotate the cookie
+the VLESS public exit changes, create a fresh isolated session, rotate the cookie
 secret, and repeat the test.
 
 ## Rotate and revoke
