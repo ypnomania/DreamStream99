@@ -129,19 +129,42 @@ Confirm that the live `runtime-config.js` has `mode: websocket` and the intended
 
 The default stack includes the pinned bgutil PO-token provider and its yt-dlp plugin. The media image also contains Node 22 and `yt-dlp-ejs`, which are used for YouTube's JavaScript challenges. These mechanisms improve compatibility but do not guarantee every video or egress address will work.
 
-If cookies are required, export a Netscape-format cookie file into:
+If cookies are required, use only a dedicated low-value account and export a
+Netscape-format file into:
 
 ```text
-deploy/secrets/youtube-cookies.txt
+deploy/secrets/youtube.cookies.txt
 ```
 
-Make it readable only by the media container's UID, set:
+Install it on the VPS as numeric uid/gid `10001:10001` with mode `0400`. Enable
+the read-only source and its distinct private tmpfs base together:
 
 ```dotenv
-YTDLP_COOKIEFILE=/run/secrets/youtube-cookies.txt
+YTDLP_COOKIEFILE_SOURCE=/run/secrets/youtube.cookies.txt
+YTDLP_COOKIEFILE=/tmp/dreamstream-media/youtube.cookies.txt
+YTDLP_PLAYER_CLIENT=default
 ```
 
-Then recreate media. Use a dedicated account and understand the account/platform risk; never commit or paste cookies into logs. A proxy can be configured with `YTDLP_PROXY`; the same proxy is used for metadata and byte relay so signed URL affinity is preserved.
+Media startup copies the source into a private `0700` directory with a stable
+`0600` base. Every resolve gives yt-dlp a unique disposable writable copy and
+deletes it after `YoutubeDL.close()`. Never point `YTDLP_COOKIEFILE` at
+`/run/secrets`, where that close would fail with `EROFS`. Recreate media after
+changing either path. Never commit, paste, print,
+screenshot, or add the file to an image or log. Cookies can expose the account
+and may trigger account challenges or suspension. Follow the complete [safe
+export, installation, verification, rotation, and revocation
+procedure](YOUTUBE_COOKIES.md). Keep `YTDLP_PLAYER_CLIENT=default`; this is
+yt-dlp's official special preset for its authenticated default client set, not
+an arbitrary client name. Explicit `tv` failed to resolve even a known public
+video with the fresh cookie, while unknown client names can be silently ignored
+and fall back to defaults, invalidating attribution. Moving a workstation
+cookie to a different VPS egress may also cause YouTube to rotate it into a
+logged-out session; establish a fresh isolated browser session through the same
+VPS egress before exporting. Acceptance
+must therefore include the smoke test's real relay `Range: bytes=0-1023`
+request and a `206` response. A proxy can be configured with
+`YTDLP_PROXY`; the same proxy is used for metadata and byte relay so signed URL
+affinity is preserved.
 
 Current upstream guidance:
 

@@ -39,6 +39,12 @@ and the original Range is retried once. Responses are always closed. Refresh
 timeout, concurrency, and failed-generation cooldown turn exhaustion into a
 generic 502 without leaking origin details.
 
+When yt-dlp reports YouTube's login or bot-verification challenge, `/resolve`
+returns HTTP 502 with `youtube_auth_required`. Raw extractor messages, video
+details, cookie values, and upstream URLs are never serialized. A dedicated
+yt-dlp logger also discards extractor output so those raw errors are not written
+to container stdout/stderr; only the fixed API classification is exposed.
+
 CORS allows only `https://ypnomania.github.io`; `/resolve` and every relay request
 require that exact Origin, so missing, duplicate, and foreign origins are
 rejected. `/healthz` remains available without Origin for Caddy/Docker health
@@ -54,7 +60,22 @@ Copy `.env.example` to an untracked `.env`. `MEDIA_GRANT_SECRET` is required and
 must contain the exact same random 32-4096 UTF-8 bytes as the Node control
 service. Keep it out of Compose YAML, Caddy config, logs, and Git.
 
-Optional settings include `YTDLP_COOKIEFILE`, `YTDLP_PROXY`,
+For a read-only Docker secret, set `YTDLP_COOKIEFILE_SOURCE` to its absolute
+path. At startup the service validates and atomically copies at most 16 MiB into
+the media-owned `/tmp/dreamstream-media/youtube.cookies.txt` with mode `0600`;
+each resolution receives a unique disposable `0600` copy, so concurrent
+YoutubeDL shutdowns cannot truncate or overwrite another cookie jar. Both the
+mounted source and runtime base remain unchanged: YoutubeDL close/save updates
+only the request copy, which is deleted instead of being committed. This is
+intentional because YouTube may rotate a previously authenticated jar into a
+logged-out state during extraction. With the source configured, leave
+`YTDLP_COOKIEFILE` empty or set it to that exact managed path. Direct
+`YTDLP_COOKIEFILE` without a source remains supported for an existing private
+cookie file and is isolated the same way.
+
+Optional settings include `YTDLP_PLAYER_CLIENT` (default yt-dlp preset
+`default`, with concrete overrides limited to `mweb`, `tv`, `tv_downgraded`,
+`web`, and `web_embedded`), `YTDLP_PROXY`,
 `YTDLP_SOCKET_TIMEOUT`, and provider-neutral `YTDLP_PO_TOKEN_PROVIDER`, e.g.
 `youtubepot-bgutilhttp:base_url=http://pot-provider:4416`. Install a selected
 plugin at build time with `--build-arg YTDLP_PLUGIN_PACKAGE=<package>`.
@@ -65,9 +86,17 @@ The image includes the matching `yt-dlp-ejs` package and an isolated Node 22
 runtime for YouTube's current JavaScript challenges. Node is explicitly enabled
 through yt-dlp's `js_runtimes` option; runtime EJS downloads are not enabled.
 `yt-dlp` is pinned to 2026.08.19, whose default dependency group pins
-`yt-dlp-ejs` 0.8.0. When the HTTP PO provider is configured, the resolver uses
-the matching `web` client; alternative provider plugins must support that
-client. Upgrade yt-dlp/EJS and both bgutil plugin/server pins together, then run
+`yt-dlp-ejs` 0.8.0. The production profile uses yt-dlp's special `default`
+preset, which selects its authenticated client combination when cookies are
+present. It is intentionally not an `INNERTUBE_CLIENTS` key; every concrete
+override is checked against that registry and must support cookies. Explicit
+`tv` did not pass this deployment's production acceptance and is only an opt-in
+diagnostic override. The resolver still accepts only direct muxed MP4 formats.
+If YouTube rotates the staged cookie into a logged-out session, changing the
+client cannot restore authentication; refresh the authorized source cookie.
+Alternative provider plugins must support the selected preset/client. Upgrade
+yt-dlp/EJS and both bgutil
+plugin/server pins together, then run
 the real integration suite before deployment. A PO token reduces some 403
 failure modes but is not a guarantee of access.
 

@@ -13,9 +13,15 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
 
 from media_service.config import (
+    ConfigurationError,
     MediaGrantSettings,
     MediaOriginSettings,
     RelayRefreshSettings,
+    YtDlpSettings,
+)
+from media_service.cookiefile import (
+    CookieFilePreparationError,
+    prepare_runtime_cookiefile,
 )
 from media_service.media_auth import MediaGrantMedia, verify_media_grant
 from media_service.relay import (
@@ -87,9 +93,17 @@ def create_relay_http_client(
 
 @asynccontextmanager
 async def lifespan(application: FastAPI):
-    async with create_relay_http_client() as relay_http_client:
+    try:
         grant_settings = MediaGrantSettings.from_env()
         refresh_settings = RelayRefreshSettings.from_env()
+        # Validate the player-client/provider grammar before advertising
+        # readiness. The per-request resolver rebuilds the options so runtime
+        # cookie staging remains visible without retaining secret values here.
+        YtDlpSettings.from_env().youtube_dl_options()
+        prepare_runtime_cookiefile()
+    except (ConfigurationError, CookieFilePreparationError) as exc:
+        raise RuntimeError("media service initialization failed") from exc
+    async with create_relay_http_client() as relay_http_client:
         refresh_coordinator = RelayRefreshCoordinator(
             max_concurrent_refreshes=refresh_settings.max_concurrent_refreshes,
             timeout_seconds=refresh_settings.timeout_seconds,
@@ -384,10 +398,10 @@ async def resolve(
         result = await run_in_threadpool(resolve_youtube, source_url)
     except MediaResolveError as exc:
         raise HTTPException(
-            status_code=422,
+            status_code=exc.status_code,
             detail={
-                "code": "resolve_failed",
-                "message": "Unable to resolve media",
+                "code": exc.code,
+                "message": exc.public_message,
             },
         ) from exc
     if result.provider != "youtube" or result.media_id != payload.media.id:

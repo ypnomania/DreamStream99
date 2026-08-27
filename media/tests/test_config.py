@@ -3,12 +3,17 @@ import subprocess
 import sys
 
 import pytest
+from yt_dlp.extractor.youtube._base import INNERTUBE_CLIENTS
 
 from media_service.config import (
+    ALLOWED_YOUTUBE_PLAYER_CLIENTS,
+    CONCRETE_YOUTUBE_PLAYER_CLIENTS,
     ConfigurationError,
+    DEFAULT_YOUTUBE_PLAYER_CLIENT,
     MediaGrantSettings,
     MediaOriginSettings,
     RelayRefreshSettings,
+    SafeYtDlpLogger,
     YtDlpSettings,
 )
 
@@ -23,13 +28,73 @@ def test_provider_config_uses_plugin_namespace_without_hardcoding_provider():
     ).youtube_dl_options()
 
     assert options["extractor_args"] == {
-        "youtube": {"player_client": ["web"]},
+        "youtube": {"player_client": ["default"]},
         "youtubepot-wpc": {
             "browser_path": ["/Applications/Browser"],
             "timeout": ["30"],
         },
     }
     assert options["js_runtimes"] == {"node": {}}
+
+
+def test_yt_dlp_logger_discards_sensitive_extractor_output(capsys):
+    logger = SafeYtDlpLogger()
+    sensitive = (
+        "ERROR: [youtube] private-video-id "
+        "https://googlevideo.example/path?token=do-not-log"
+    )
+
+    logger.debug(sensitive)
+    logger.info(sensitive)
+    logger.warning(sensitive)
+    logger.error(sensitive)
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+
+
+def test_yt_dlp_options_always_install_the_safe_logger():
+    options = YtDlpSettings.from_env({}).youtube_dl_options()
+
+    assert isinstance(options["logger"], SafeYtDlpLogger)
+
+
+@pytest.mark.parametrize(
+    "client",
+    ["default", "mweb", "tv", "tv_downgraded", "web", "web_embedded"],
+)
+def test_youtube_player_client_has_a_strict_allowlist(client):
+    options = YtDlpSettings.from_env(
+        {"YTDLP_PLAYER_CLIENT": client}
+    ).youtube_dl_options()
+
+    assert options["extractor_args"]["youtube"] == {
+        "player_client": [client]
+    }
+
+
+@pytest.mark.parametrize(
+    "client",
+    ["WEB", "android", "tv_embedded", "mweb,web", " mweb ", "../../client"],
+)
+def test_invalid_youtube_player_client_is_rejected(client):
+    with pytest.raises(ConfigurationError):
+        YtDlpSettings.from_env({"YTDLP_PLAYER_CLIENT": client})
+
+
+def test_allowlisted_clients_exist_and_support_cookies_in_pinned_yt_dlp():
+    assert DEFAULT_YOUTUBE_PLAYER_CLIENT == "default"
+    assert DEFAULT_YOUTUBE_PLAYER_CLIENT not in INNERTUBE_CLIENTS
+    assert ALLOWED_YOUTUBE_PLAYER_CLIENTS == {
+        DEFAULT_YOUTUBE_PLAYER_CLIENT,
+        *CONCRETE_YOUTUBE_PLAYER_CLIENTS,
+    }
+    assert CONCRETE_YOUTUBE_PLAYER_CLIENTS <= INNERTUBE_CLIENTS.keys()
+    assert all(
+        INNERTUBE_CLIENTS[client].get("SUPPORTS_COOKIES") is True
+        for client in CONCRETE_YOUTUBE_PLAYER_CLIENTS
+    )
 
 
 @pytest.mark.parametrize(

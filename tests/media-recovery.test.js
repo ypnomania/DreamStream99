@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  mediaErrorMessage,
   MediaRecoveryController,
   MediaRecoveryExhaustedError,
   isRecoverableMediaError,
+  isYouTubeAuthRequiredError,
+  shouldAutomaticallyRecoverMediaError,
+  YOUTUBE_AUTH_REQUIRED_MESSAGE,
 } from '../public/js/media-recovery.js';
 
 test('only stale/unauthorized public media statuses trigger automatic re-resolution', () => {
@@ -13,6 +17,48 @@ test('only stale/unauthorized public media statuses trigger automatic re-resolut
   for (const status of [400, 409, 422, 429, 500, undefined]) {
     assert.equal(isRecoverableMediaError({ status }), false);
   }
+});
+
+test('YouTube bot-check failures show actionable guidance and never enter automatic recovery', () => {
+  const explicit = {
+    status: 403,
+    code: 'youtube_auth_required',
+    message: 'Unable to resolve media',
+  };
+  assert.equal(isYouTubeAuthRequiredError(explicit), true);
+  assert.equal(isRecoverableMediaError(explicit), false);
+  assert.equal(
+    shouldAutomaticallyRecoverMediaError(explicit, { nativeAdapterActive: true }),
+    false,
+  );
+  assert.equal(mediaErrorMessage(explicit), YOUTUBE_AUTH_REQUIRED_MESSAGE);
+  assert.match(mediaErrorMessage(explicit), /try another video/i);
+  assert.match(mediaErrorMessage(explicit), /cookies or PO token/i);
+
+  const nestedBotCheck = new MediaRecoveryExhaustedError(
+    new Error("Sign in to confirm you're not a bot"),
+  );
+  assert.equal(isYouTubeAuthRequiredError(nestedBotCheck), true);
+  assert.equal(
+    shouldAutomaticallyRecoverMediaError(nestedBotCheck, { nativeAdapterActive: true }),
+    false,
+  );
+  assert.equal(mediaErrorMessage(nestedBotCheck), YOUTUBE_AUTH_REQUIRED_MESSAGE);
+});
+
+test('native errors and stale relay statuses keep their existing recovery behavior', () => {
+  assert.equal(
+    shouldAutomaticallyRecoverMediaError({ status: 404 }, { nativeAdapterActive: false }),
+    true,
+  );
+  assert.equal(
+    shouldAutomaticallyRecoverMediaError(new Error('video error'), { nativeAdapterActive: true }),
+    true,
+  );
+  assert.equal(
+    shouldAutomaticallyRecoverMediaError({ status: 422 }, { nativeAdapterActive: false }),
+    false,
+  );
 });
 
 function deferred() {

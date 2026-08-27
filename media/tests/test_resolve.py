@@ -4,6 +4,7 @@ import hmac
 import json
 import os
 import time
+from pathlib import Path
 from time import perf_counter
 from unittest.mock import patch
 
@@ -28,6 +29,8 @@ def clean_service_state(monkeypatch):
     client.headers["Authorization"] = f"Bearer {_media_grant()}"
     for name in (
         "YTDLP_COOKIEFILE",
+        "YTDLP_COOKIEFILE_SOURCE",
+        "YTDLP_PLAYER_CLIENT",
         "YTDLP_PO_TOKEN_PROVIDER",
         "YTDLP_PROXY",
         "YTDLP_SOCKET_TIMEOUT",
@@ -271,11 +274,15 @@ def test_hls_and_dash_only_media_returns_no_stream_capabilities(record_property)
 
 def test_cookie_and_generic_po_token_provider_are_read_from_environment(
     record_property,
+    tmp_path,
 ):
+    cookiefile = tmp_path / "youtube-cookies.txt"
+    cookiefile.write_text("# Netscape HTTP Cookie File\n", encoding="utf-8")
+    cookiefile.chmod(0o400)
     with patch.dict(
         os.environ,
         {
-            "YTDLP_COOKIEFILE": "/run/secrets/youtube-cookies.txt",
+            "YTDLP_COOKIEFILE": str(cookiefile),
             "YTDLP_PO_TOKEN_PROVIDER": (
                 "youtubepot-bgutilhttp:base_url=http://pot-provider:4416"
             ),
@@ -288,9 +295,15 @@ def test_cookie_and_generic_po_token_provider_are_read_from_environment(
 
     assert response.status_code == 200
     options = ydl_class.call_args.args[0]
-    assert options["cookiefile"] == "/run/secrets/youtube-cookies.txt"
+    request_cookiefile = Path(options["cookiefile"])
+    assert request_cookiefile != cookiefile
+    assert request_cookiefile.parent == Path("/tmp/dreamstream-media")
+    assert not request_cookiefile.exists()
+    assert cookiefile.read_text(encoding="utf-8") == (
+        "# Netscape HTTP Cookie File\n"
+    )
     assert options["extractor_args"] == {
-        "youtube": {"player_client": ["web"]},
+        "youtube": {"player_client": ["default"]},
         "youtubepot-bgutilhttp": {
             "base_url": ["http://pot-provider:4416"],
         },
@@ -318,7 +331,40 @@ def test_url_scoped_yt_dlp_cookies_are_kept_only_in_the_relay_session(
     assert dict(target.request_headers)["Cookie"] == "SID=scoped-cookie"
 
 
-def test_resolver_errors_are_generic_and_do_not_leak_upstream_details(record_property):
+def test_youtube_dl_close_cookie_update_is_discarded_with_request_copy(
+    record_property,
+    tmp_path,
+):
+    runtime_base = tmp_path / "youtube-cookies.txt"
+    runtime_base.write_bytes(b"# Netscape HTTP Cookie File\nbase-session\n")
+    runtime_base.chmod(0o600)
+
+    with (
+        patch.dict(os.environ, {"YTDLP_COOKIEFILE": str(runtime_base)}),
+        patch("media_service.resolver.YoutubeDL") as ydl_class,
+    ):
+        ydl = ydl_class.return_value.__enter__.return_value
+        ydl.extract_info.return_value = _info(formats=[_format("18")])
+
+        def save_refreshed_cookie(*_args):
+            request_cookiefile = Path(ydl_class.call_args.args[0]["cookiefile"])
+            with request_cookiefile.open("ab") as handle:
+                handle.write(b"# refreshed-on-close\n")
+
+        ydl_class.return_value.__exit__.side_effect = save_refreshed_cookie
+
+        started = perf_counter()
+        response = client.post("/resolve", json={"media": TEST_MEDIA})
+        record_property("elapsed_seconds", round(perf_counter() - started, 6))
+
+    assert response.status_code == 200
+    assert b"# refreshed-on-close\n" not in runtime_base.read_bytes()
+    assert runtime_base.read_bytes() == (
+        b"# Netscape HTTP Cookie File\nbase-session\n"
+    )
+
+
+def test_generic_resolver_errors_do_not_leak_upstream_details(record_property):
     response, _ = _post_with_result(
         DownloadError(
             "ERROR: https://secret.googlevideo.com/videoplayback?token=do-not-leak"
@@ -335,6 +381,53 @@ def test_resolver_errors_are_generic_and_do_not_leak_upstream_details(record_pro
     }
     assert "googlevideo" not in response.text
     assert "do-not-leak" not in response.text
+
+
+@pytest.mark.parametrize(
+    "upstream_message",
+    [
+        "Sign in to confirm you’re not a bot. Use --cookies for authentication",
+        "Sign in to confirm you're not a bot",
+        "LOGIN REQUIRED for this video",
+        "This video is only available for registered users",
+        "Use --cookies-from-browser or --cookies for the authentication",
+    ],
+)
+def test_youtube_auth_challenges_have_a_safe_actionable_error(
+    upstream_message,
+    record_property,
+):
+    response, _ = _post_with_result(
+        DownloadError(
+            "ERROR: [youtube] private-id: "
+            + upstream_message
+            + " secret-cookie=do-not-leak"
+        ),
+        record_property,
+    )
+
+    assert response.status_code == 502
+    assert response.json() == {
+        "detail": {
+            "code": "youtube_auth_required",
+            "message": "YouTube authentication is required for this media",
+        }
+    }
+    assert upstream_message not in response.text
+    assert "private-id" not in response.text
+    assert "do-not-leak" not in response.text
+
+
+def test_unavailable_format_is_not_misclassified_as_authentication(
+    record_property,
+):
+    response, _ = _post_with_result(
+        DownloadError("ERROR: Requested format is not available"),
+        record_property,
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "resolve_failed"
 
 
 @pytest.mark.parametrize(

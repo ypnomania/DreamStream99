@@ -66,7 +66,8 @@ If the browser still fails:
 4. Re-run the smoke test with a known public progressive video.
 5. Test whether the VPS egress is being challenged or blocked.
 6. Update yt-dlp/EJS/provider together and rerun the Python suite.
-7. If needed, supply a protected cookie file or an affinity-preserving proxy.
+7. If needed, supply a protected cookie file using the [dedicated-account
+   procedure](YOUTUBE_COOKIES.md), or use an affinity-preserving proxy.
 
 The relay retries only once and cools down a failed generation. Repeatedly hammering the endpoint will not repair an extractor or egress problem.
 
@@ -106,6 +107,46 @@ Rotation is a coordinated, room-disrupting operation:
 5. Securely replace the backup copy.
 
 Do not attempt a rolling rotation with different secrets; Node-issued grants would fail Python verification.
+
+## YouTube cookie lifecycle
+
+Treat `deploy/secrets/youtube.cookies.txt` as a revocable account credential,
+not ordinary configuration. It must remain owned by numeric uid/gid
+`10001:10001`, mode `0400`, and mounted read-only as
+`/run/secrets/youtube.cookies.txt`. Configure that path as
+`YTDLP_COOKIEFILE_SOURCE`; configure `YTDLP_COOKIEFILE` as the distinct private
+tmpfs base `/tmp/dreamstream-media/youtube.cookies.txt`. Never point that path at
+`/run/secrets`: each resolve uses a unique disposable writable copy because
+yt-dlp rewrites its jar on close, then deletes the copy without mutating the
+mounted secret or the stable runtime base.
+
+- Verify source metadata/header plus the `0700` runtime directory and `0600`
+  working copy without printing cookie rows.
+- Rotate with a brand-new incognito/private session through the same VPS egress
+  (for example, an operator-controlled VPS SOCKS5 endpoint or SSH tunnel). Log
+  in, open a blank tab, close all YouTube tabs, export, then immediately close
+  the entire private session and never reopen it. Stage the export, install it
+  with the same ownership/mode, recreate only `media`, and immediately run the
+  target video's real Range smoke test, requiring `206` without printing cookie
+  values.
+- Revoke immediately after suspected disclosure: clear both cookie path
+  settings, recreate `media` to erase tmpfs, remove the server source, and
+  revoke the Google session.
+- A cookie committed to Git or pasted into chat, logs, screenshots, or a support
+  ticket is compromised even if it is later deleted.
+
+Use the commands and account-safety checklist in [YouTube cookie
+operations](YOUTUBE_COOKIES.md). Cookie rotation recreates media and therefore
+invalidates existing relay capabilities; browser recovery must resolve again.
+Keep `YTDLP_PLAYER_CLIENT=default`, yt-dlp's official special preset for the
+authenticated default client set. A cookie exported under a different network
+egress may be rotated into a logged-out session after reaching the VPS; create
+the replacement isolated browser session through the same VPS egress. After
+rotation, run the full public smoke
+test and require its real relay `Range: bytes=0-1023` request to return `206`.
+A healthy process or a successful format 18 resolve alone does not validate the
+cookie and player-client combination; `mweb` has produced a subsequent `403`
+from GoogleVideo in production.
 
 ## Caddy changes and rollback
 

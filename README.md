@@ -8,7 +8,7 @@
 
 一个真正可联机的复古观影房：GitHub Pages 承载纯静态前端，VPS 上的 Node.js、FastAPI 与 Caddy 负责房间同步、媒体解析和 Range 转发。
 
-[Open DreamStream 99](https://ypnomania.github.io/DreamStream99/) · [Deployment guide](docs/DEPLOYMENT.md) · [Operations guide](docs/OPERATIONS.md) · [Architecture notes](DESIGN_NOTES.md)
+[Open DreamStream 99](https://ypnomania.github.io/DreamStream99/) · [Deployment guide](docs/DEPLOYMENT.md) · [Operations guide](docs/OPERATIONS.md) · [YouTube cookie guide](docs/YOUTUBE_COOKIES.md) · [Architecture notes](DESIGN_NOTES.md)
 
 ![DreamStream 99 main interface](docs/images/dreamstream-overview.png)
 
@@ -124,7 +124,9 @@ The smoke script creates a disposable room and never prints room credentials or 
 | `ALLOWED_ORIGIN` | `https://ypnomania.github.io` | One exact browser origin; an Origin never includes the repository path |
 | `PUBLIC_HOST` | `dreamstream.lucius7.dev` | TLS hostname used by the bundled Caddy profile |
 | `MAX_ROOMS` | `10000` | Bound on process-local control rooms |
-| `YTDLP_COOKIEFILE` | empty | Optional Netscape cookie file mounted from `deploy/secrets/` |
+| `YTDLP_COOKIEFILE_SOURCE` | empty | Optional read-only dedicated-account Netscape secret under `/run/secrets/` |
+| `YTDLP_COOKIEFILE` | empty | Private tmpfs base copied into a disposable writable jar for each resolve; enable with the source as documented in the [cookie guide](docs/YOUTUBE_COOKIES.md) |
+| `YTDLP_PLAYER_CLIENT` | `default` | Official yt-dlp preset for authenticated defaults; production relay verification must include a real byte-range request returning `206` |
 | `YTDLP_PO_TOKEN_PROVIDER` | internal bgutil endpoint | yt-dlp PO-token plugin extractor argument |
 | `YTDLP_PROXY` | empty | Optional proxy shared by resolution and relay requests |
 | `RELAY_REFRESH_*` | see `.env.example` | Refresh deadline, failure cooldown, and global concurrency bound |
@@ -140,6 +142,7 @@ For a fork, change `ALLOWED_ORIGIN`, `PUBLIC_HOST`, and the three public endpoin
 - This architecture has no managed database, queue, transcoder, or control-plane subscription. The VPS, storage, DNS, and especially outbound media bandwidth can still cost money.
 - A directly addressed VPS is discoverable and is not a DDoS shield. This project provides application authorization and strict exposure, not volumetric attack protection.
 - YouTube behavior changes and some videos may require cookies, PO tokens, a supported JavaScript runtime, or different egress. Self-hosters are responsible for content rights and applicable platform terms.
+- A YouTube cookie file is a live account credential. Use only a dedicated low-value account, keep the source `deploy/secrets/youtube.cookies.txt` owned by uid/gid `10001` with mode `0400`, and never commit, paste, or log it. Startup stages a private `0600` tmpfs base; each resolve gives yt-dlp a unique disposable writable copy, so extractor shutdown cannot alter the mounted secret or poison later requests. YouTube may invalidate login state when a workstation cookie is moved to a different VPS egress, so establish a new isolated session through the same VPS egress. Follow the [export, verification, rotation, and revocation procedure](docs/YOUTUBE_COOKIES.md).
 
 See [operations](docs/OPERATIONS.md) for secret rotation, log hygiene, state-loss expectations, 403 diagnosis, and incident checks.
 

@@ -16,6 +16,36 @@ _PROVIDER_NAMESPACE = re.compile(r"youtubepot-[a-z0-9][a-z0-9_-]*", re.IGNORECAS
 _EXTRACTOR_ARGUMENT = re.compile(r"[a-z0-9][a-z0-9_-]*", re.IGNORECASE)
 _DNS_LABEL = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?")
 DEFAULT_ALLOWED_ORIGIN = "https://ypnomania.github.io"
+DEFAULT_YOUTUBE_PLAYER_CLIENT = "default"
+CONCRETE_YOUTUBE_PLAYER_CLIENTS = frozenset(
+    {"mweb", "tv", "tv_downgraded", "web", "web_embedded"}
+)
+ALLOWED_YOUTUBE_PLAYER_CLIENTS = frozenset(
+    {DEFAULT_YOUTUBE_PLAYER_CLIENT, *CONCRETE_YOUTUBE_PLAYER_CLIENTS}
+)
+
+
+class SafeYtDlpLogger:
+    """Discard extractor text that may contain IDs, URLs, or cookie details.
+
+    yt-dlp still raises ``DownloadError`` with the original in-memory message,
+    allowing the resolver to produce a fixed public error classification.
+    """
+
+    def debug(self, _message: str) -> None:
+        pass
+
+    def info(self, _message: str) -> None:
+        pass
+
+    def warning(self, _message: str) -> None:
+        pass
+
+    def error(self, _message: str) -> None:
+        pass
+
+
+SAFE_YTDLP_LOGGER = SafeYtDlpLogger()
 
 
 def _optional_env(environ: Mapping[str, str], name: str) -> str | None:
@@ -162,6 +192,7 @@ def _provider_extractor_args(spec: str) -> dict[str, dict[str, list[str]]]:
 class YtDlpSettings:
     cookiefile: str | None = None
     po_token_provider: str | None = None
+    player_client: str = DEFAULT_YOUTUBE_PLAYER_CLIENT
     proxy: str | None = None
     socket_timeout: float = 20.0
 
@@ -171,9 +202,20 @@ class YtDlpSettings:
         environ: Mapping[str, str] | None = None,
     ) -> "YtDlpSettings":
         source = os.environ if environ is None else environ
+        raw_player_client = source.get("YTDLP_PLAYER_CLIENT")
+        player_client = (
+            DEFAULT_YOUTUBE_PLAYER_CLIENT
+            if raw_player_client in {None, ""}
+            else raw_player_client
+        )
+        if player_client not in ALLOWED_YOUTUBE_PLAYER_CLIENTS:
+            raise ConfigurationError(
+                "YTDLP_PLAYER_CLIENT is not an allowed YouTube client"
+            )
         return cls(
             cookiefile=_optional_env(source, "YTDLP_COOKIEFILE"),
             po_token_provider=_optional_env(source, "YTDLP_PO_TOKEN_PROVIDER"),
+            player_client=player_client,
             proxy=_optional_env(source, "YTDLP_PROXY"),
             socket_timeout=_positive_float(source, "YTDLP_SOCKET_TIMEOUT", 20.0),
         )
@@ -182,6 +224,7 @@ class YtDlpSettings:
         options: dict[str, Any] = {
             "quiet": True,
             "no_warnings": True,
+            "logger": SAFE_YTDLP_LOGGER,
             "skip_download": True,
             "noplaylist": True,
             "extract_flat": False,
@@ -193,12 +236,12 @@ class YtDlpSettings:
             options["cookiefile"] = self.cookiefile
         if self.proxy:
             options["proxy"] = self.proxy
+        extractor_args: dict[str, dict[str, list[str]]] = {
+            "youtube": {"player_client": [self.player_client]},
+        }
         if self.po_token_provider:
-            extractor_args: dict[str, dict[str, list[str]]] = {
-                "youtube": {"player_client": ["web"]},
-            }
             extractor_args.update(_provider_extractor_args(self.po_token_provider))
-            options["extractor_args"] = extractor_args
+        options["extractor_args"] = extractor_args
 
         return options
 

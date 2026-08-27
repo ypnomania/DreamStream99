@@ -1,4 +1,8 @@
-import { MediaRecoveryController, isRecoverableMediaError } from './media-recovery.js';
+import {
+  mediaErrorMessage,
+  MediaRecoveryController,
+  shouldAutomaticallyRecoverMediaError,
+} from './media-recovery.js';
 import { PlayerAdapterRouter } from './player-adapter-router.js';
 import { createRoomClient, normalizeRoomsApiUrl } from './room-client.js';
 
@@ -176,7 +180,7 @@ const playerAdapterCallbacks = {
     els.unmuteOverlay.classList.remove('is-hidden');
     toast(t('toastAutoplayMuted'));
   },
-  onInitError: (error) => showPlayerError(error?.message),
+  onInitError: (error) => showPlayerError(mediaErrorMessage(error, t('toastSyncFailed'))),
   onError: handlePlayerAdapterError,
 };
 const playerAdapterRouter = new PlayerAdapterRouter(els.playerHost, playerAdapterCallbacks);
@@ -341,17 +345,22 @@ async function applyPlaybackState(payload, force = false) {
   } catch (error) {
     if (applyGeneration !== playerApplyGeneration) return;
     if (adapter && adapter !== playerAdapterRouter.adapter) return;
-    if (runtime.mediaUrl && (isRecoverableMediaError(error) || playerAdapterRouter.activeRoute === 'native')) {
+    if (
+      runtime.mediaUrl
+      && shouldAutomaticallyRecoverMediaError(error, {
+        nativeAdapterActive: playerAdapterRouter.activeRoute === 'native',
+      })
+    ) {
       try {
         await startMediaRecovery(incoming);
         return;
       } catch (recoveryError) {
         if (recoveryError?.name === 'AbortError') return;
-        showPlayerError(recoveryError?.message || t('toastSyncFailed'));
+        showPlayerError(mediaErrorMessage(recoveryError, t('toastSyncFailed')));
         return;
       }
     }
-    showPlayerError(error.message || t('toastSyncFailed'));
+    showPlayerError(mediaErrorMessage(error, t('toastSyncFailed')));
   }
 }
 
@@ -381,7 +390,7 @@ function handlePlayerAdapterError(code) {
   if (nativeRecoveryTask) return;
   startMediaRecovery(playback).catch((error) => {
     if (error?.name === 'AbortError') return;
-    const message = error?.message || t('toastSyncFailed');
+    const message = mediaErrorMessage(error, t('toastSyncFailed'));
     toast(message);
     showPlayerError(message);
   });
@@ -992,7 +1001,7 @@ els.retryPlayerButton.addEventListener('click', async () => {
   } catch (error) {
     if (retryGeneration !== playerApplyGeneration) return;
     if (adapter && adapter !== playerAdapterRouter.adapter) return;
-    showPlayerError(error.message || t('toastSyncFailed'));
+    showPlayerError(mediaErrorMessage(error, t('toastSyncFailed')));
   }
 });
 

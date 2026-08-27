@@ -6,8 +6,45 @@ export class MediaRecoveryExhaustedError extends Error {
   }
 }
 
+export const YOUTUBE_AUTH_REQUIRED_MESSAGE = 'YouTube is requiring verification from the media server. Try another video, or try again later after the site operator refreshes the server\'s YouTube cookies or PO token.';
+
+const YOUTUBE_AUTH_ERROR_CODES = new Set([
+  'youtube_auth_required',
+  'youtube_bot_check',
+  'bot_check_required',
+]);
+
+export function isYouTubeAuthRequiredError(error) {
+  const visited = new Set();
+  let current = error;
+  while (current && typeof current === 'object' && !visited.has(current)) {
+    visited.add(current);
+    const code = typeof current.code === 'string' ? current.code.trim().toLowerCase() : '';
+    const message = typeof current.message === 'string' ? current.message : '';
+    if (
+      YOUTUBE_AUTH_ERROR_CODES.has(code)
+      || /sign in to confirm|not a bot|bot[-_ ]?check|youtube.{0,40}(?:auth|verification).{0,20}required/i.test(message)
+    ) {
+      return true;
+    }
+    current = current.cause;
+  }
+  return false;
+}
+
+export function mediaErrorMessage(error, fallback = 'Media playback failed') {
+  if (isYouTubeAuthRequiredError(error)) return YOUTUBE_AUTH_REQUIRED_MESSAGE;
+  return typeof error?.message === 'string' && error.message ? error.message : fallback;
+}
+
 export function isRecoverableMediaError(error) {
+  if (isYouTubeAuthRequiredError(error)) return false;
   return [401, 403, 404, 410].includes(error?.status);
+}
+
+export function shouldAutomaticallyRecoverMediaError(error, { nativeAdapterActive = false } = {}) {
+  if (isYouTubeAuthRequiredError(error)) return false;
+  return isRecoverableMediaError(error) || nativeAdapterActive;
 }
 
 /**

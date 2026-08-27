@@ -50,7 +50,10 @@ services:
       HOME: /tmp
       ALLOWED_ORIGIN: ${ALLOWED_ORIGIN:-https://ypnomania.github.io}
       MEDIA_GRANT_SECRET: ${MEDIA_GRANT_SECRET:?set MEDIA_GRANT_SECRET in .env}
+      # A read-only secret is staged into a private tmpfs working file at startup.
+      YTDLP_COOKIEFILE_SOURCE: ${YTDLP_COOKIEFILE_SOURCE:-}
       YTDLP_COOKIEFILE: ${YTDLP_COOKIEFILE:-}
+      YTDLP_PLAYER_CLIENT: ${YTDLP_PLAYER_CLIENT:-default}
       YTDLP_PO_TOKEN_PROVIDER: ${YTDLP_PO_TOKEN_PROVIDER:-youtubepot-bgutilhttp:base_url=http://pot-provider:4416}
       YTDLP_PROXY: ${YTDLP_PROXY:-}
       YTDLP_SOCKET_TIMEOUT: ${YTDLP_SOCKET_TIMEOUT:-20}

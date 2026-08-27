@@ -1,4 +1,5 @@
 from collections.abc import Mapping
+from contextlib import nullcontext
 from dataclasses import dataclass
 from math import isfinite
 from typing import Any
@@ -8,11 +9,52 @@ from yt_dlp import YoutubeDL
 from yt_dlp.utils import DownloadError
 
 from media_service.config import ConfigurationError, YtDlpSettings
+from media_service.cookiefile import (
+    CookieFilePreparationError,
+    isolated_runtime_cookiefile,
+)
 from media_service.sessions import is_allowed_upstream_url
 
 
 class MediaResolveError(Exception):
-    """An expected failure while resolving a media URL."""
+    """An expected resolver failure with a safe public representation."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "resolve_failed",
+        public_message: str = "Unable to resolve media",
+        status_code: int = 422,
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+        self.public_message = public_message
+        self.status_code = status_code
+
+
+_YOUTUBE_AUTH_REQUIRED_MARKERS = (
+    "sign in to confirm you’re not a bot",
+    "sign in to confirm you're not a bot",
+    "login required",
+    "requires authentication",
+    "this video is only available for registered users",
+    "use --cookies-from-browser or --cookies",
+)
+
+
+def _download_error_requires_youtube_authentication(exc: DownloadError) -> bool:
+    """Classify known yt-dlp auth challenges without exposing their text."""
+
+    messages: list[str] = []
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen and len(messages) < 4:
+        seen.add(id(current))
+        messages.append(str(current).casefold())
+        current = current.__cause__ or current.__context__
+    combined = "\n".join(messages)
+    return any(marker in combined for marker in _YOUTUBE_AUTH_REQUIRED_MARKERS)
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,24 +186,40 @@ def resolve_youtube(url: str) -> ResolvedMedia:
     cookie_headers: dict[str, str] = {}
     try:
         options = _yt_dlp_options()
-        with YoutubeDL(options) as ydl:
-            info = ydl.extract_info(url, download=False)
-            if isinstance(info, Mapping):
-                for raw_format in info.get("formats") or []:
-                    if not isinstance(raw_format, Mapping):
-                        continue
-                    upstream_url = raw_format.get("url")
-                    if (
-                        not isinstance(upstream_url, str)
-                        or not is_allowed_upstream_url(upstream_url)
-                    ):
-                        continue
-                    cookie_header = ydl.cookiejar.get_cookie_header(upstream_url)
-                    if isinstance(cookie_header, str) and cookie_header:
-                        cookie_headers[upstream_url] = cookie_header
-    except ConfigurationError as exc:
+        configured_cookiefile = options.get("cookiefile")
+        cookie_context = (
+            isolated_runtime_cookiefile(configured_cookiefile)
+            if isinstance(configured_cookiefile, str) and configured_cookiefile
+            else nullcontext(None)
+        )
+        with cookie_context as request_cookiefile:
+            if request_cookiefile is not None:
+                options["cookiefile"] = str(request_cookiefile)
+            with YoutubeDL(options) as ydl:
+                info = ydl.extract_info(url, download=False)
+                if isinstance(info, Mapping):
+                    for raw_format in info.get("formats") or []:
+                        if not isinstance(raw_format, Mapping):
+                            continue
+                        upstream_url = raw_format.get("url")
+                        if (
+                            not isinstance(upstream_url, str)
+                            or not is_allowed_upstream_url(upstream_url)
+                        ):
+                            continue
+                        cookie_header = ydl.cookiejar.get_cookie_header(upstream_url)
+                        if isinstance(cookie_header, str) and cookie_header:
+                            cookie_headers[upstream_url] = cookie_header
+    except (ConfigurationError, CookieFilePreparationError) as exc:
         raise MediaResolveError("invalid media resolver configuration") from exc
     except DownloadError as exc:
+        if _download_error_requires_youtube_authentication(exc):
+            raise MediaResolveError(
+                "yt-dlp reported a YouTube authentication challenge",
+                code="youtube_auth_required",
+                public_message="YouTube authentication is required for this media",
+                status_code=502,
+            ) from exc
         raise MediaResolveError("yt-dlp could not resolve this media") from exc
     except (OSError, ValueError) as exc:
         raise MediaResolveError("the media resolver failed") from exc
